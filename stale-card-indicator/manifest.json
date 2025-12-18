@@ -1,0 +1,23 @@
+{
+  "name": "stale-card-indicator",
+  "title": "stale card indicator",
+  "description": "This app automatically monitors issues of an project and make it easy to see which tasks have stayed too long in &#34;In Progress&#34;. It highlights overdue tasks that so that teams can quickly identify bottlenecks and keep projects moving.",
+  "$schema": "https://json.schemastore.org/youtrack-app.json",
+  "vendor": {
+    "name": "Ninjaneers GmbH",
+    "url": "https://ninjaneers.de"
+  },
+  "icon": "icon.svg",
+  "widgets": [
+
+    {
+      "key": "1",
+      "name": "stale card indicator",
+      "indexPath": "1/index.html",
+      "extensionPoint": "PROJECT_SETTINGS",
+      "iconPath": "1/widget-icon.svg",
+      "description": "",
+      "permissions": []
+    }
+  ]
+}

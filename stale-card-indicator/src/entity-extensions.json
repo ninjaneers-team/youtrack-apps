@@ -1,0 +1,13 @@
+{
+  "entityTypeExtensions": [
+    {
+      "entityType": "Issue",
+      
+      "properties": {
+          "lastMovedTimestamp": {
+          "type": "float"
+        }
+      }
+    }
+  ]
+}
