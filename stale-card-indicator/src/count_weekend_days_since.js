@@ -22,5 +22,19 @@ function countWeekendDaysSince(pastTimestamp) {
   return daysCount;
 }
 
+function parseSettings(settingsStr:String) {
+    return JSON.parse(settingsStr);
+}
+
+function createFilterQuery(settingsStr:String) {
+    const settings = parseSettings(settingsStr)
+
+    var result = 'has:Board' + settings.board;
+    for (state in settings.states) {
+        result += ' #' + state + "|";
+    }
+    return result.substring(0, result.length - 1);
+}
 
 exports.countWeekendDaysSince = countWeekendDaysSince;
+exports.createFilterQuery = createFilterQuery;
