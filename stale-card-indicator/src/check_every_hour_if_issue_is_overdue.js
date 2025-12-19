@@ -1,18 +1,35 @@
 const entities = require('@jetbrains/youtrack-scripting-api/entities');
-const count = require('./count_weekend_days_since');
+const count = require('./utils.js');
+const {getSettingsFromContext} = require("./utils.js");
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const OVERDUE_INTERVALL =  (DAY_IN_MS * 2).toFixed(7);
 
+function isOnBoard(boards, board) {
+    return  boards.some(boardItem => {
+        if (boardItem.name === board) {
+            return true;
+        }
+    });
+}
+
+function checkState(states, issue) {
+    return  states.some(state => {
+        if (state === issue.fields().State()) {
+            return true;
+        }
+    });
+}
+
 exports.rule = entities.Issue.onSchedule({
   title: 'check every hour if issue is overdue',
-  search: '#Unresolved',
+  search: 'has:boards #Unresolved',
   cron: '0 0 * * * ?',
   guard: (ctx) => {
+    const settings = getSettingsFromContext(ctx)
     const issue = ctx.issue;
-   	const extpr = issue.extensionProperties;
-    
-    return issue.isReported && extpr.lastMovedTimestamp != null;
+
+    return !isOnBoard(issue.boards(), settings.board) && !checkState(settings.states, issue);
   },
   action: (ctx) => {
     const issue = ctx.issue;
@@ -51,6 +68,9 @@ exports.rule = entities.Issue.onSchedule({
       six_dots: {name: '🟠🟠🟠🟠🟠🟠'},
       seven_dots: {name: '🔴🔴🔴🔴🔴🔴🔴'},
       head_explodes: {name: '🤯'},
-    }
+    },
+   State: {
+        type: entities.State.fieldType
+   }
   }
 });

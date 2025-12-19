@@ -29,12 +29,20 @@ function parseSettings(settingsStr) {
 function createFilterQuery(settingsStr) {
     const settings = parseSettings(settingsStr)
 
-    var result = 'has: Board' + settings.board;
+    var result = 'has: {Board ' + settings.board + '}';
     for (var state in settings.states) {
-        result += ' #' + state + "|";
+        result += ' #{' + settings.states[state] + "} |";
     }
     return result.substring(0, result.length - 1);
 }
 
+function getSettingsFromContext(context) {
+    if (context.globalStorage.extensionProperties.stalecardSettings !== null) {
+        context.globalStorage.extensionProperties.stalecardSettings = parseSettings(context.stalecardStrConfig);
+    }
+    return context.globalStorage.extensionProperties.stalecardSettings;
+}
+
 exports.countWeekendDaysSince = countWeekendDaysSince;
 exports.createFilterQuery = createFilterQuery;
+exports.getSettingsFromContext = getSettingsFromContext;
