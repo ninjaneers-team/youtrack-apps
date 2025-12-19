@@ -5,10 +5,7 @@
     "description": "",
     "properties": {
         "staleCardSettings": {
-            "type": "array",
-            "items": {
-                "type": "string"
-            }
+            "type": "string"
         }
 
     },
