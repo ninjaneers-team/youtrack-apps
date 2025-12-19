@@ -37,12 +37,37 @@ function createFilterQuery(settingsStr) {
 }
 
 function getSettingsFromContext(context) {
-    if (context.globalStorage.extensionProperties.stalecardSettings !== null) {
-        context.globalStorage.extensionProperties.stalecardSettings = parseSettings(context.stalecardStrConfig);
+
+    if (context.globalStorage.extensionProperties.stalecardBoardName === null) {
+        const parsedSettings = parseSettings(context.staleCardSettings);
+        context.globalStorage.extensionProperties.stalecardBoardName = parsedSettings.board;
+        context.globalStorage.extensionProperties.stalecardBoardStates = parsedSettings.states;
     }
-    return context.globalStorage.extensionProperties.stalecardSettings;
+    return {
+        "board": context.globalStorage.extensionProperties.stalecardBoardName,
+        "states": context.globalStorage.extensionProperties.stalecardBoardStates
+    };
 }
+
+function isOnBoard(boards, board) {
+    return  boards.some(boardItem => {
+        if (boardItem.name === board) {
+            return true;
+        }
+    });
+}
+
+function checkState(states, issue) {
+    return  states.some(state => {
+        if (state === issue.fields().State()) {
+            return true;
+        }
+    });
+}
+
 
 exports.countWeekendDaysSince = countWeekendDaysSince;
 exports.createFilterQuery = createFilterQuery;
 exports.getSettingsFromContext = getSettingsFromContext;
+exports.isOnBoard = isOnBoard;
+exports.checkState = checkState;

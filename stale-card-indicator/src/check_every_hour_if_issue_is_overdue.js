@@ -1,35 +1,19 @@
 const entities = require('@jetbrains/youtrack-scripting-api/entities');
-const count = require('./utils.js');
-const {getSettingsFromContext} = require("./utils.js");
+const utils = require('./utils.js');
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const OVERDUE_INTERVALL =  (DAY_IN_MS * 2).toFixed(7);
 
-function isOnBoard(boards, board) {
-    return  boards.some(boardItem => {
-        if (boardItem.name === board) {
-            return true;
-        }
-    });
-}
-
-function checkState(states, issue) {
-    return  states.some(state => {
-        if (state === issue.fields().State()) {
-            return true;
-        }
-    });
-}
 
 exports.rule = entities.Issue.onSchedule({
   title: 'check every hour if issue is overdue',
   search: 'has:boards #Unresolved',
   cron: '0 0 * * * ?',
   guard: (ctx) => {
-    const settings = getSettingsFromContext(ctx)
+    const settings = utils.getSettingsFromContext(ctx)
     const issue = ctx.issue;
 
-    return !isOnBoard(issue.boards(), settings.board) && !checkState(settings.states, issue);
+    return !utils.isOnBoard(issue.boards(), settings.board) && !utils.checkState(settings.states, issue);
   },
   action: (ctx) => {
     const issue = ctx.issue;
@@ -37,7 +21,7 @@ exports.rule = entities.Issue.onSchedule({
     const lastMovedTimestamp = issue.extensionProperties.lastMovedTimestamp;
     const now = new Date();
     
-    const numberOfWeekendDays = count.countWeekendDaysSince(lastMovedTimestamp);
+    const numberOfWeekendDays = utils.countWeekendDaysSince(lastMovedTimestamp);
     const staleDuration = now - lastMovedTimestamp - (numberOfWeekendDays * DAY_IN_MS);
     const newStaleLevelNum = Math.floor(staleDuration / OVERDUE_INTERVALL);
     

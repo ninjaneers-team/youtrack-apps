@@ -11,8 +11,12 @@
     }, {
       "entityType": "AppGlobalStorage",
       "properties": {
-        "stalecardSettngs": {
-          "type": "object"
+        "stalecardBoardName": {
+          "type": "string"
+        },
+        "stalecardBoardStates": {
+          "type": "State",
+          "multi": true
         }
       }
     }
