@@ -4,7 +4,7 @@
     "title": "App settings",
     "description": "",
     "properties": {
-        "boards": {
+        "staleCardSettings": {
             "type": "array",
             "items": {
                 "type": "string"
@@ -12,5 +12,5 @@
         }
 
     },
-    "required":["boards"]
+    "required":["staleCardSettings"]
 }
