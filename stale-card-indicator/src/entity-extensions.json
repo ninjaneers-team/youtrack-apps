@@ -15,8 +15,7 @@
           "type": "string"
         },
         "stalecardBoardStates": {
-          "type": "State",
-          "multi": true
+          "type": "string"
         }
       }
     }

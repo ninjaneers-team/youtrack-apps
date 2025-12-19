@@ -22,24 +22,9 @@ function countWeekendDaysSince(pastTimestamp) {
   return daysCount;
 }
 
-function parseSettings(settingsStr) {
-    return JSON.parse(settingsStr);
-}
-
-function createFilterQuery(settingsStr) {
-    const settings = parseSettings(settingsStr)
-
-    var result = 'has: {Board ' + settings.board + '}';
-    for (var state in settings.states) {
-        result += ' #{' + settings.states[state] + "} |";
-    }
-    return result.substring(0, result.length - 1);
-}
-
 function getSettingsFromContext(context) {
-
     if (context.globalStorage.extensionProperties.stalecardBoardName === null) {
-        const parsedSettings = parseSettings(context.staleCardSettings);
+        const parsedSettings = JSON.parse(context.settings.staleCardSettings);
         context.globalStorage.extensionProperties.stalecardBoardName = parsedSettings.board;
         context.globalStorage.extensionProperties.stalecardBoardStates = parsedSettings.states;
     }
@@ -50,24 +35,21 @@ function getSettingsFromContext(context) {
 }
 
 function isOnBoard(boards, board) {
-    return  boards.some(boardItem => {
-        if (boardItem.name === board) {
-            return true;
+    let onBoard = false;
+
+    boards.forEach(b => {
+        if(b.name === board) {
+            onBoard =  true;
         }
     });
+    return onBoard;
 }
 
-function checkState(states, issue) {
-    return  states.some(state => {
-        if (state === issue.fields().State()) {
-            return true;
-        }
-    });
+function isStateTracked(states, issue) {
+    return states.includes(issue.fields.State.name);
 }
-
 
 exports.countWeekendDaysSince = countWeekendDaysSince;
-exports.createFilterQuery = createFilterQuery;
 exports.getSettingsFromContext = getSettingsFromContext;
 exports.isOnBoard = isOnBoard;
-exports.checkState = checkState;
+exports.isStateTracked = isStateTracked;

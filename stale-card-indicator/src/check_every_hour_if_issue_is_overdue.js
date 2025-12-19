@@ -10,10 +10,10 @@ exports.rule = entities.Issue.onSchedule({
   search: 'has:boards #Unresolved',
   cron: '0 0 * * * ?',
   guard: (ctx) => {
-    const settings = utils.getSettingsFromContext(ctx)
+    const settings = utils.getSettingsFromContext(ctx);
     const issue = ctx.issue;
 
-    return !utils.isOnBoard(issue.boards(), settings.board) && !utils.checkState(settings.states, issue);
+    return utils.isOnBoard(issue.boards, settings.board) && utils.isStateTracked(settings.states, issue);
   },
   action: (ctx) => {
     const issue = ctx.issue;
@@ -32,7 +32,7 @@ exports.rule = entities.Issue.onSchedule({
     ) {
       return;
     }
-    
+
     const nextStaleValue = ctx.staleLevel.findValueByOrdinal(
       newStaleLevelNum + 1
     );
@@ -53,8 +53,5 @@ exports.rule = entities.Issue.onSchedule({
       seven_dots: {name: '🔴🔴🔴🔴🔴🔴🔴'},
       head_explodes: {name: '🤯'},
     },
-   State: {
-        type: entities.State.fieldType
-   }
   }
 });
