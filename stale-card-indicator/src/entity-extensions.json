@@ -2,20 +2,20 @@
   "entityTypeExtensions": [
     {
       "entityType": "Issue",
-      
+
       "properties": {
-          "lastMovedTimestamp": {
-          "type": "float"
+        "lastMovedTimestamp": {
+          "type": "integer",
+          "description":""
         }
       }
-    }, {
-      "entityType": "AppGlobalStorage",
+    },
+    {
+      "entityType": "Project",
       "properties": {
-        "stalecardBoardName": {
-          "type": "string"
-        },
-        "stalecardBoardStates": {
-          "type": "string"
+        "holidaysByRegion": {
+          "type": "string",
+          "description":"Stringified JSON: {country:string, county: string, holidays: { date: string; name: string }[]}"
         }
       }
     }

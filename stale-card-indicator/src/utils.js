@@ -1,36 +1,36 @@
 /**
- * Returns the number of weekend days (Saturday & Sunday)
+ * Returns the number of weekend days (Saturday & Sunday) and holidays
  * between a given timestamp (ms) and now.
- * 
+ *
  * @param {number} pastTimestamp - A timestamp in milliseconds (Number).
- * @returns {number} count of weekend days
+ * @returns {number} count of weekend days and holidays
  */
-function countWeekendDaysSince(pastTimestamp) {
-  const start = new Date(pastTimestamp);
-  const end = new Date();
-  
-  let daysCount = 0;
-  
-  while(start <= end) {
-    const day = start.getDay();
-    if(day == 0 || day == 6) {
-      daysCount++;
+function countWeekendDaysAndHolidaysSince(pastTimestamp, holidayDatesSet) {
+    const start = new Date(pastTimestamp);
+    const end = new Date();
+
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+
+    let daysCount = 0;
+
+    while(start <= end) {
+        const day = start.getDay();
+        const isHoliday = holidayDatesSet?.has(start.toISOString().split('T')[0]) || false;
+
+        if(day === 0 || day === 6 || isHoliday) {
+            daysCount++;
+        }
+        start.setDate(start.getDate() + 1);
     }
-     start.setDate(start.getDate() + 1);
-  }
-  
-  return daysCount;
+
+    return daysCount;
 }
 
 function getSettingsFromContext(context) {
-    if (context.globalStorage.extensionProperties.stalecardBoardName === null) {
-        const parsedSettings = JSON.parse(context.settings.staleCardSettings);
-        context.globalStorage.extensionProperties.stalecardBoardName = parsedSettings.board;
-        context.globalStorage.extensionProperties.stalecardBoardStates = parsedSettings.states;
-    }
     return {
-        "board": context.globalStorage.extensionProperties.stalecardBoardName,
-        "states": context.globalStorage.extensionProperties.stalecardBoardStates
+        "board": context.settings.trackedBoard.trim(),
+        "states": context.settings.trackedStates.split(',').map(s => s.trim())
     };
 }
 
@@ -45,11 +45,16 @@ function isOnBoard(boards, board) {
     return onBoard;
 }
 
-function isStateTracked(states, issue) {
-    return states.includes(issue.fields.State.name);
+function getHolidayDatesSetFromContext(context){
+    const holidayDates = JSON.parse(context.project.extensionProperties.holidaysByRegion);
+    const holidayDatesSet = new Set();
+    holidayDates.holidays.forEach(holiday => {
+        holidayDatesSet.add(holiday.date);
+    });
+    return holidayDatesSet;
 }
 
-exports.countWeekendDaysSince = countWeekendDaysSince;
+exports.countWeekendDaysAndHolidaysSince = countWeekendDaysAndHolidaysSince;
 exports.getSettingsFromContext = getSettingsFromContext;
 exports.isOnBoard = isOnBoard;
-exports.isStateTracked = isStateTracked;
+exports.getHolidayDatesExtensionFromContext = getHolidayDatesSetFromContext;

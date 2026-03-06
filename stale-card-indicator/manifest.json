@@ -1,7 +1,7 @@
 {
   "name": "stale-card-indicator",
   "title": "stale card indicator",
-  "description": "This app automatically monitors issues of an project and make it easy to see which tasks have stayed too long in &#34;In Progress&#34;. It highlights overdue tasks that so that teams can quickly identify bottlenecks and keep projects moving.",
+  "description": "This app automatically monitors how long issues stay in selected columns on a specific board within a project. When a task exceeds the configured interval, a colored dot appears on the ticket and escalates over time. \n The colored dot is an issue custom field and is called stale level. For the stale level to be visible on the board it needs to be placed as one of the first fields on the issue. This makes overdue issues and bottlenecks visible at a glance, helping teams take action faster and keep work flowing.",
   "$schema": "https://json.schemastore.org/youtrack-app.json",
   "vendor": {
     "name": "Ninjaneers GmbH",
@@ -12,12 +12,12 @@
 
     {
       "key": "1",
-      "name": "stale card indicator",
+      "name": "stale card indicator: Manage holidays",
       "indexPath": "1/index.html",
       "extensionPoint": "PROJECT_SETTINGS",
       "iconPath": "1/widget-icon.svg",
-      "description": "",
-      "permissions": []
+      "description": "Allows to fetch public holidays by country and county using the Nager.Date API. Retrieved holidays are displayed within the app and can be deleted at any time. All imported holidays are automatically considered in stale level calculation, ensuring that non-working days are excluded when determining whether a task exceeds the configured time.",
+      "permissions": ["UPDATE_PROJECT"]
     }
   ]
 }
