@@ -6,7 +6,7 @@
       "properties": {
         "lastMovedTimestamp": {
           "type": "integer",
-          "description":""
+          "description":"Stores the timestamp when the issue was last moved between board columns."
         }
       }
     },
