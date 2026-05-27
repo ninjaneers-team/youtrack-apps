@@ -2,10 +2,20 @@
   "entityTypeExtensions": [
     {
       "entityType": "Issue",
-      
+
       "properties": {
-          "lastMovedTimestamp": {
-          "type": "float"
+        "lastMovedTimestamp": {
+          "type": "integer",
+          "description":"Stores the timestamp when the issue was last moved between board columns."
+        }
+      }
+    },
+    {
+      "entityType": "Project",
+      "properties": {
+        "holidaysByRegion": {
+          "type": "string",
+          "description":"Stringified JSON: {country:string, county: string, holidays: { date: string; name: string }[]}"
         }
       }
     }

@@ -4,6 +4,28 @@
     "title": "App settings",
     "description": "",
     "properties": {
+        "trackedBoard": {
+            "title": "tracked board",
+            "type": "string",
+            "x-scope": "PROJECT",
+            "description": "Enter the board name to track issues from that board in the app.",
+            "minLength": 1
+        },
+        "trackedStates": {
+            "title": "tracked states",
+            "type": "string",
+            "x-scope": "PROJECT",
+            "description": "Enter the name of the states from the board to track their issues, separated by commas. Example: Open, In Progress",
+            "minLength": 1
+        },
+
+        "levelIncreaseIntervalInDays": {
+            "title": "Level increase interval in days",
+            "type": "number",
+            "x-scope": "PROJECT",
+            "description": "Enter the interval in days, that is used to determine the stale level.",
+            "minimum": 0.5
+        }
     },
-    "required":[]
+    "required":["trackedBoard", "trackedStates", "levelIncreaseIntervalInDays"]
 }
