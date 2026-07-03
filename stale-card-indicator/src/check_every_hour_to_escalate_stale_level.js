@@ -65,7 +65,7 @@ exports.rule = entities.Issue.onSchedule({
       five_dots: {name: '🟡🟡🟡🟡🟡'},
       six_dots: {name: '🟠🟠🟠🟠🟠🟠'},
       seven_dots: {name: '🔴🔴🔴🔴🔴🔴🔴'},
-      head_explodes: {name: '🤯'},
+      stale_max: {name: '🤯'},
     },
   }
 });
