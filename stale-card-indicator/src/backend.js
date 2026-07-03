@@ -31,7 +31,16 @@ exports.httpHandler = {
           return;
         }
 
-        const parsedResponse = JSON.parse(response.response);
+        let parsedResponse;
+
+        try {
+          parsedResponse = JSON.parse(response.response);
+        } catch {
+          ctx.response.json({
+            error: 'Invalid JSON from API'
+          });
+          return;
+        }
 
         const responseByCountryAndCounty = parsedResponse.filter(holiday => {
           if (!county) return true;

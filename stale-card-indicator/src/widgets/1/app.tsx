@@ -17,7 +17,11 @@ const HolidaysWidget: React.FunctionComponent = () => {
 
     const fetchSavedHolidays = useCallback(async() => {
       try {
-        const response = await host.fetchApp<{country:string, county: string, holidays: { date: string; name: string }[] }>('backend/holidays', {
+        const response = await host.fetchApp<{
+          country:string,
+          county: string,
+          holidays: { date: string; name: string }[]
+        }>('backend/holidays', {
           scope: true,
           method: 'GET'
         });
@@ -42,7 +46,9 @@ const HolidaysWidget: React.FunctionComponent = () => {
     setMessage(null);
 
     try {
-          const response = await host.fetchApp<{ holidays: { date: string; name: string }[] }>(
+          const response = await host.fetchApp<{
+            holidays: { date: string; name: string }[]
+          }>(
           'backend/holidays',
           { scope: true,
             method: 'POST',
