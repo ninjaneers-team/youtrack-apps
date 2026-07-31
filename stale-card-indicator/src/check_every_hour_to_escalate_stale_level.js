@@ -17,7 +17,7 @@ const STALE_LEVEL_MAP = {
 exports.rule = entities.Issue.onSchedule({
   title: 'Check every hour to escalate the stale level',
   search: 'has:boards #Unresolved',
-  cron: '0 0 * * * ?',
+  cron: '0 0 * ? * MON-FRI',
   guard: (ctx) => {
     const issue = ctx.issue;
     const settings = utils.getSettingsFromContext(ctx);
