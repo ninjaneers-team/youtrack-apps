@@ -2,6 +2,7 @@
   "name": "stale-card-indicator",
   "title": "stale card indicator",
   "description": "This app monitors how long issues stay in selected columns on a project board. When a task exceeds the configured interval, a colored dot (stale level) appears on the ticket and escalates over time.\nThe stale level is a custom field and should be placed among the first fields on the issue to be visible on the board. This helps teams quickly spot overdue issues and bottlenecks.\nWeekend days are excluded, and holiday data can be configured through a widget. This ensures the stale level reflects only actual working days for more accurate issue aging.",
+  "version": "1.0.0",
   "$schema": "https://json.schemastore.org/youtrack-app.json",
   "vendor": {
     "name": "Ninjaneers GmbH",
