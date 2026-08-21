@@ -80,46 +80,167 @@ const HolidaysWidget: React.FunctionComponent = () => {
   }, [fetchSavedHolidays]);
 
   return (
-      <div className="widget">
-        <h3>Fetch and Display Holidays</h3>
-        <Panel className="form-panel">
+    <div
+      className="widget"
+      style={{
+            width: '700px',
+            maxWidth: '100%',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+          }}
+    >
+      {/* Header */}
+      <Panel style={{ padding: '16px' }}>
+        <h2 style={{ margin: 0 }}>📅 Holiday Configuration</h2>
+        <Text style={{ color: '#6B7280' }}>
+          Manage public holidays used for stale level calculations.
+        </Text>
+      </Panel>
+
+      {/* Holiday Source */}
+      <Panel style={{ padding: '16px' }}>
+        <h3 style={{ marginTop: 0 }}>Holiday Source</h3>
+
+        <div
+          style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+              }}
+        >
+          <Input
+            value={inputCountry}
+            onChange={(e) => setInputCountry(e.target.value)}
+            placeholder="Country code (e.g. DE)"
+          />
+
+          <Input
+            value={inputCounty}
+            onChange={(e) => setInputCounty(e.target.value)}
+            placeholder="County (optional, e.g. DE-HE)"
+          />
+
           <Group>
-            <Input
-                value={inputCountry}
-                onChange={(e) => setInputCountry(e.target.value)}
-                placeholder="Country code (e.g. DE)"
-            />
-            <Input
-                value={inputCounty}
-                onChange={(e) => setInputCounty(e.target.value)}
-                placeholder="County (optional e.g. DE-HE)"
-            />
+            <Button primary onClick={fetchHolidays}>
+              Fetch Holidays
+            </Button>
+
+            <Button onClick={clearHolidays}>
+              Clear Holidays
+            </Button>
           </Group>
-          <Group>
-            <Button primary onClick={fetchHolidays}>Fetch Holidays</Button>
-            <Button onClick={clearHolidays}>Clear Holidays</Button>
-          </Group>
+        </div>
+      </Panel>
+
+      {/* Status Message */}
+      {message && (
+        <Panel
+          style={{
+                  padding: '10px 16px',
+                  backgroundColor: message.toLowerCase().includes('error')
+                      ? '#FEECEC'
+                      : '#EDF7ED',
+                  borderLeft: message.toLowerCase().includes('error')
+                      ? '4px solid #D93025'
+                      : '4px solid #2E7D32',
+                }}
+        >
+          <Text>{message}</Text>
         </Panel>
-
-        {message && <Text>{message}</Text>}
-
-        <h4>Saved Holidays:</h4>
-        {holidays.length === 0 && <Text>No holidays saved</Text>}
-        {holidays.length > 0 && (
-            <>
-              <Text>
-                Country: {savedCountry} {savedCounty ? `- County: ${savedCounty}` : ''}
-              </Text>
-              <ul>
-                {holidays.map((h) => (
-                    <li key={h.date}>
-                      {h.date} — {h.name}
-                    </li>
-                ))}
-              </ul>
-            </>
         )}
-      </div>
+
+      {/* Configured Holidays */}
+      <Panel style={{ padding: '16px' }}>
+        <h3 style={{ marginTop: 0 }}>Configured Holidays</h3>
+
+        {holidays.length === 0 && (
+          <Text style={{ color: '#6B7280' }}>
+            No holidays configured.
+          </Text>
+          )}
+
+        {holidays.length > 0 && (
+          <>
+            {/* Summary */}
+            <div
+              style={{
+                      width: '700px',
+                      maxWidth: '100%',
+                      padding: '12px 16px',
+                      marginBottom: '16px',
+                      background: '#F5F7FA',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      gap: '24px',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      fontSize: '15px',
+                    }}
+            >
+              <span>
+                <strong>Country:</strong> {savedCountry}
+              </span>
+
+              {savedCounty && (
+              <span>
+                <strong>County:</strong> {savedCounty}
+              </span>
+                  )}
+
+              <span style={{ marginLeft: 'auto' }}>
+                <strong>Configured Holidays:</strong> {holidays.length}
+              </span>
+            </div>
+
+            {/* Holiday List */}
+            <div
+              style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                    }}
+            >
+              {holidays.map((h) => (
+                <div
+                  key={`${h.date}-${h.name}`}
+                  style={{
+                            width: '700px',
+                            maxWidth: '100%',
+                            padding: '12px 16px',
+                            background: '#FAFBFC',
+                            borderLeft: '4px solid #167DFF',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                >
+                  <span
+                    style={{
+                      fontSize: '16px',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {h.name}
+                  </span>
+
+                  <span
+                    style={{
+                              color: '#6B7280',
+                              fontSize: '18px',
+                            }}
+                  >
+                    {h.date}
+                  </span>
+                </div>
+                  ))}
+            </div>
+          </>
+          )}
+      </Panel>
+    </div>
   );
 };
 
