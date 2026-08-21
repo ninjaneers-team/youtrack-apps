@@ -28,6 +28,7 @@ exports.httpHandler = {
                 code: response?.code
               }
           );
+          console.warn(`Nager API call failed. Status=${response?.code}, Response=${response?.response}`);
           return;
         }
 
@@ -35,10 +36,11 @@ exports.httpHandler = {
 
         try {
           parsedResponse = JSON.parse(response.response);
-        } catch {
+        } catch(e) {
           ctx.response.json({
             error: 'Invalid JSON from API'
           });
+          console.error(`Failed to parse API response: ${e.message}`);
           return;
         }
 

@@ -1,5 +1,6 @@
 const entities = require('@jetbrains/youtrack-scripting-api/entities');
 const utils = require('./utils.js');
+const search = require('@jetbrains/youtrack-scripting-api/search');
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const STALE_LEVEL_MAP = {
@@ -16,42 +17,48 @@ const STALE_LEVEL_MAP = {
 
 exports.rule = entities.Issue.onSchedule({
   title: 'Check every hour to escalate the stale level',
-  search: 'has:boards #Unresolved',
   cron: '0 0 * ? * MON-FRI',
-  guard: (ctx) => {
-    const issue = ctx.issue;
-    const settings = utils.getSettingsFromContext(ctx);
-
-    return utils.isOnBoard(issue.boards, settings.board) && settings.states.includes(issue.fields.State.name);
+  muteUpdateNotifications: true,
+  search: (ctx) => {
+    const issue = ctx.project.issues.first();
+    return `issue id: ${issue.id}`;
   },
   action: (ctx) => {
-    const issue = ctx.issue;
-    const currentStaleLevel = issue.fields.staleLevel;
-    const lastMovedTimestamp = issue.extensionProperties.lastMovedTimestamp;
-    const now = Date.now();
-    const overdueInterval = DAY_IN_MS * ctx.settings.levelIncreaseIntervalInDays;
+    const settings = utils.getSettingsFromContext(ctx);
+    const states = settings.states.map(state => '{' + state + '}').join(', ');
+    const query = 'has: {Board ' + settings.board + '} State: ' + states + ' #Unresolved';
+    const issues = search.search(ctx.project, query, ctx.currentUser);
 
-    // Updates timestamp and level if setting changes and issue isn’t moved yet.
-    if(lastMovedTimestamp == null) {
-      issue.extensionProperties.lastMovedTimestamp = now;
-      issue.fields.staleLevel = ctx.staleLevel.check;
-      return;
-    }
+    issues.forEach((issue) => {
+      const currentStaleLevel = issue.fields[ctx.staleLevel.name];
+      const lastMovedTimestamp = issue.extensionProperties.lastMovedTimestamp;
+      const now = Date.now();
+      const overdueInterval = DAY_IN_MS * ctx.settings.levelIncreaseIntervalInDays;
 
-    const holidayDatesSet = utils.getHolidayDatesSetFromContext(ctx);
-    const numberOfWeekendDaysAndHolidays = utils.countWeekendDaysAndHolidaysSince(lastMovedTimestamp,  holidayDatesSet);
-    const staleDuration = Math.max(0, now - lastMovedTimestamp - (numberOfWeekendDaysAndHolidays * DAY_IN_MS));
-    const newStaleLevelNum = Math.floor(staleDuration / overdueInterval);
+      // Updates timestamp and level if setting changes and issue isn’t moved yet.
+      if(lastMovedTimestamp == null) {
+        issue.extensionProperties.lastMovedTimestamp = now;
+        issue.fields[ctx.staleLevel.name] = ctx.staleLevel.check;
+        console.log("Initialized stale level tracking for issue " + issue.id);
+        return;
+      }
 
-    if (!(newStaleLevelNum in STALE_LEVEL_MAP) || STALE_LEVEL_MAP[newStaleLevelNum] === currentStaleLevel.name ) {
-      return;
-    }
+      const holidayDatesSet = utils.getHolidayDatesSetFromContext(ctx);
+      const numberOfWeekendDaysAndHolidays = utils.countWeekendDaysAndHolidaysSince(lastMovedTimestamp,  holidayDatesSet);
+      const staleDuration = Math.max(0, now - lastMovedTimestamp - (numberOfWeekendDaysAndHolidays * DAY_IN_MS));
+      const newStaleLevelNum = Math.floor(staleDuration / overdueInterval);
 
-    const nextStaleValue = ctx.staleLevel.findValueByName(
-        STALE_LEVEL_MAP[newStaleLevelNum]
-    );
+      if (!(newStaleLevelNum in STALE_LEVEL_MAP) || STALE_LEVEL_MAP[newStaleLevelNum] === currentStaleLevel.name ) {
+        return;
+      }
 
-    ctx.issue.fields.staleLevel = nextStaleValue;
+      const nextStaleValue = ctx.staleLevel.findValueByName(
+          STALE_LEVEL_MAP[newStaleLevelNum]
+      );
+
+      issue.fields[ctx.staleLevel.name] = nextStaleValue;
+      console.log("Updated stale level for issue " + issue.id + " to " + nextStaleValue.name);
+    });
   },
   requirements: {
     staleLevel: {
