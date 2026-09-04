@@ -74,7 +74,10 @@ const ScoreView: React.FunctionComponent<{lastScan: ScanAggregate}> = ({
     <div className="score-tile__figures">
       <div className="score-tile__value">
         {lastScan.score === null ? 'n/a' : scoreText(lastScan.score)}
-        <span className="score-tile__max">{' / 100'}</span>
+        {/* In words rather than as a slash: a maximum in small print beside the
+            figure is read as decoration, and then nothing on the tile says which
+            direction on this scale is the good one. */}
+        <span className="score-tile__max">{' out of 100'}</span>
       </div>
       <p className="score-tile__offer">
         {plural(lastScan.findings, 'finding')}

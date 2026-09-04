@@ -252,14 +252,16 @@ test('a score that stands on decisions says so, and names the measured one', asy
 
 test('the file accounts for all hundred points, decisions included', async () => {
   const plain = await render();
-  assert.match(plain, /Of 100 points: kept [\d.]+, /);
-  assert.ok(!/marked as intentional [\d.]+/.test(plain), 'nothing marked, nothing to say');
+  /* The table is the account: every area with what it was worth and what it lost,
+     in points of the same hundred as the score above it. */
+  assert.match(plain, /\| Area \| Points kept \| Points lost \|/);
+  assert.match(plain, /\| Governance \| [\d.]+ \/ [\d.]+ \| [\d.]+ \|/);
+  assert.ok(!/marked as intentional/.test(plain), 'nothing marked, nothing to say');
 
   const decided = await render(new Set(['governance.projects-without-leader']));
-  /* The categories in the table below each score out of a hundred of their own and
-     cannot be compared; this line is what they cost the overall score. */
-  assert.match(decided, /Of 100 points: kept [\d.]+, marked as intentional [\d.]+, /);
-  assert.match(decided, /governance [\d.]+/);
+  // A file travels further than the app, so a score resting on a decision says so.
+  assert.match(decided, /marked as intentional, so [\d.]+ of those [\d.]+ points rest/);
+  assert.match(decided, /Measured, this scan is [\d.]+ out of 100/);
 });
 
 test('a marked object stays in the list and says it no longer counts', async () => {

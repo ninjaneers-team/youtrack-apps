@@ -14,8 +14,7 @@ import {
   movementDetail,
   movementPhrase,
   scanFateNote,
-  scoreBarParts,
-  scoreComposition,
+  categoryPoints,
   timestampText,
 } from '../src/report-shared.ts';
 import { trendSentence } from '../src/report-shared.ts';
@@ -39,52 +38,59 @@ async function outcomes() {
   });
 }
 
-test('the parts of the score add up to a hundred', async () => {
-  const composition = scoreComposition(score(await outcomes()));
-  assert.ok(composition);
+/** What every scored category took out of the hundred, largest first. */
+function lossesOf(result: ReturnType<typeof score>): Array<{category: string; points: number}> {
+  return result.categories
+    .filter(c => c.score !== null)
+    .map(c => ({ category: c.category, points: categoryPoints(result, c.category)?.lost ?? 0 }))
+    .filter(loss => loss.points > 0)
+    .sort((a, b) => b.points - a.points);
+}
 
-  const lost = composition.losses.reduce((sum, part) => sum + part.points, 0);
-  assert.equal(oneDecimal(composition.kept + composition.decisions + lost), 100);
-  // Nothing marked, so no points were handed back.
-  assert.equal(composition.decisions, 0);
+test('the score and what every area lost add up to a hundred', async () => {
+  /* The arithmetic the table rests on: the score plus what each area lost is the
+     whole hundred. Break it and every "points lost" column lies by the difference,
+     with nothing on the page to reveal it. */
+  const result = score(await outcomes());
+  assert.ok(result.overallScore !== null);
+
+  const lost = lossesOf(result).reduce((sum, loss) => sum + loss.points, 0);
+  assert.equal(oneDecimal(result.overallScore + lost), 100);
+  // Nothing marked, so the score and the measurement are the same number.
+  assert.equal(result.overallScore, result.overallAsMeasured);
 });
 
-test('a category weighs on the score by its weight, not by its own number', async () => {
-  const composition = scoreComposition(score(await outcomes()));
-  assert.ok(composition);
+test('an area weighs on the score by its weight, not by its own number', async () => {
+  const result = score(await outcomes());
+  const losses = lossesOf(result);
 
-  const licensing = composition.losses.find(part => part.category === 'licensing');
-  const portfolio = composition.losses.find(part => part.category === 'portfolio');
+  const licensing = losses.find(loss => loss.category === 'licensing');
+  const portfolio = losses.find(loss => loss.category === 'portfolio');
   assert.ok(licensing && portfolio);
 
   /* Licences count 3 of the 10 category weights and portfolio 1, so the same share
      of lost points costs licences three times as much of the hundred. This is what
-     the bar shows and a table of category scores cannot. */
+     the "points lost" column states and a category's own score cannot. */
   assert.ok(
     licensing.points > portfolio.points,
     `licences ${licensing.points} should outweigh portfolio ${portfolio.points}`,
   );
-  // Strongest first, so a reader starts where the points went.
-  const points = composition.losses.map(part => part.points);
-  assert.deepEqual(points, [...points].sort((a, b) => b - a));
 });
 
-test('what decisions handed back is its own part, not hidden in what is kept', async () => {
+test('what decisions handed back comes out of the same hundred', async () => {
   const all = await outcomes();
   const decided = score(all, new Set(['governance.projects-without-leader']));
-  const composition = scoreComposition(decided);
   const effect = decisionEffect(decided);
-  assert.ok(composition && effect);
+  assert.ok(decided.overallScore !== null && effect);
 
-  // The same number the sentence states, and it comes out of the same hundred.
-  assert.equal(oneDecimal(composition.decisions), effect.points);
-  assert.equal(oneDecimal(composition.kept), oneDecimal(effect.asMeasured));
-  const lost = composition.losses.reduce((sum, part) => sum + part.points, 0);
-  assert.equal(oneDecimal(composition.kept + composition.decisions + lost), 100);
+  // The sentence and the score agree, and the hundred still adds up with it in.
+  assert.equal(oneDecimal(decided.overallScore - (decided.overallAsMeasured ?? 0)), effect.points);
+  const lost = lossesOf(decided).reduce((sum, loss) => sum + loss.points, 0);
+  assert.equal(oneDecimal(decided.overallScore + lost), 100);
 });
 
-test('an instance nothing could be measured on has no composition', () => {
-  assert.equal(scoreComposition(score([])), null);
+test('an instance nothing could be measured on has no score', () => {
+  assert.equal(score([]).overallScore, null);
 });
 
 test('a scan is dated the same way wherever it is read', () => {
@@ -154,32 +160,6 @@ test('a scan the app did not keep does not say it was kept', () => {
 
 test('a run read back from storage says that is what it is', () => {
   assert.notEqual(scanFateNote('kept', true), scanFateNote('kept', false));
-});
-
-test('the score bar is one picture, whoever draws it', async () => {
-  /* The page and the printed document both draw these parts. What has to hold for
-     both: they cover the hundred, the losses come strongest first, and each one
-     after the first is drawn a step fainter without fading away. */
-  const composition = scoreComposition(score(await outcomes()));
-  assert.ok(composition);
-
-  const parts = scoreBarParts(composition);
-  assert.equal(oneDecimal(parts.reduce((sum, part) => sum + part.points, 0)), 100);
-  assert.equal(parts[0]?.kind, 'kept');
-  // Nothing is marked here, so the part that decisions hand back is not drawn.
-  assert.deepEqual(parts.filter(part => part.kind === 'decisions'), []);
-
-  const losses = parts.filter(part => part.kind === 'loss');
-  assert.ok(losses.length > 1);
-  for (const [index, loss] of losses.entries()) {
-    const next = losses[index + 1];
-    if (next) {
-      assert.ok(loss.points >= next.points, 'the largest loss is drawn first');
-      assert.ok(loss.opacity >= next.opacity);
-    }
-    assert.ok(loss.opacity > 0, 'a loss that is drawn at all stays visible');
-    assert.ok(loss.label.length > 0, 'every part of the bar can be named in a legend');
-  }
 });
 
 test('what moved about a check reads the same in every report', () => {

@@ -23,7 +23,6 @@ import {
   ITEM_NOUN,
   decisionEffect,
   decisionSentence,
-  scoreComposition,
   issueSearchUrl,
   itemUrl,
   ITEMS_SHOWN,
@@ -46,8 +45,15 @@ import {
 } from './report-shared.ts';
 import type { HundredPoints } from './report-shared.ts';
 
+/**
+ * The score and what it is out of, in words.
+ *
+ * A file has no ring to put the figure inside, and a slash beside it says the same
+ * thing in a second form - which reads as a second scale on a page that carries the
+ * app's own sentences too ("Measured, this scan is 67.8 out of 100").
+ */
 function scoreLine(score: number | null): string {
-  return score === null ? 'n/a' : `${scoreText(score)} / 100`;
+  return score === null ? 'n/a' : `${scoreText(score)} out of 100`;
 }
 
 /** Shared empty set for findings with nothing marked. */
@@ -140,12 +146,6 @@ export function reportToMarkdown({
     '',
     '## Where the points went',
     '',
-    /* The category numbers below are each out of a hundred of their own, so they
-       cannot be compared: what a category costs the overall score is its weight
-       times what it lost. That is this line, and it is the same split the app and
-       the printed report draw as a bar. */
-    compositionLine(result),
-    '',
     '| Area | Points kept | Points lost |',
     '| --- | ---: | --- |',
   );
@@ -225,24 +225,6 @@ export function reportToMarkdown({
   lines.push('');
 
   return lines.join('\n');
-}
-
-/** The hundred points of the overall score, split into what became of them. */
-function compositionLine(result: ScanResult): string {
-  const composition = scoreComposition(result);
-  if (composition === null) {
-    return 'Not a single check ran, so there are no points to account for.';
-  }
-  const parts = [
-    `kept ${scoreText(composition.kept)}`,
-    ...(composition.decisions > 0
-      ? [`marked as intentional ${scoreText(composition.decisions)}`]
-      : []),
-    ...composition.losses.map(
-      (loss) => `${CATEGORY_LABEL[loss.category].toLowerCase()} ${scoreText(loss.points)}`,
-    ),
-  ];
-  return `Of 100 points: ${parts.join(', ')}.`;
 }
 
 /**

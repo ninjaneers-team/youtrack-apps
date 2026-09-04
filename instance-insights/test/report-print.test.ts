@@ -426,21 +426,24 @@ test('the printed score shows what it would be without the decisions', async () 
   assert.match(html, /Measured, this scan is [\d.]+ out of 100\./);
 });
 
-test('the printed score carries the bar it is made of', async () => {
+test('the printed score carries the ring it sits in', async () => {
   const outcomes = await runChecks(CHECKS, contextOn(syntheticInstance(NOW)));
-  const html = reportToPrintHtml({
-    result: score(outcomes, new Set(['governance.projects-without-leader'])),
-    checks: CHECKS,
-    at: NOW,
-  });
+  const result = score(outcomes, new Set(['governance.projects-without-leader']));
+  const html = reportToPrintHtml({ result, checks: CHECKS, at: NOW });
+  assert.ok(result.overallScore !== null);
 
-  // One rect per part, and the widths are points of the same hundred.
-  const widths = [...html.matchAll(/<rect x="[\d.]+" y="0" width="([\d.]+)"/g)].map(m =>
-    Number(m[1]),
-  );
-  assert.ok(widths.length >= 3, 'kept, the decision and at least one category');
-  assert.equal(Math.round(widths.reduce((sum, w) => sum + w, 0)), 100);
-  // The legend names the parts, so the bar is readable without hovering anything.
-  assert.match(html, /class="score-bar__legend"/);
-  assert.match(html, /Marked as intentional [\d.]+/);
+  /* The arc is a dash of the score's share of the circumference. A dial drawn from
+     the wrong share is a picture that contradicts the figure printed inside it, and
+     on paper there is nothing to hover to find that out. */
+  const dash = html.match(/stroke-dasharray="([\d.]+) ([\d.]+)"/);
+  assert.ok(dash, 'the arc is drawn');
+  const drawn = Number(dash[1]);
+  const whole = Number(dash[2]);
+  assert.equal(Math.round((drawn / whole) * 100), Math.round(result.overallScore));
+
+  // In words inside the ring, because no arc can say what it is out of.
+  assert.match(html, /class="score-ring__max">out of 100</);
+  /* A score that stands on a decision says so: the reader of a forwarded document
+     was not there when it was taken. */
+  assert.match(html, /marked as intentional, so [\d.]+ of those [\d.]+ points rest/);
 });

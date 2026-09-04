@@ -23,8 +23,6 @@ import {
   dateText,
   decisionEffect,
   decisionSentence,
-  scoreBarParts,
-  scoreComposition,
   issueSearchUrl,
   itemUrl,
   ITEM_NOUN,
@@ -47,7 +45,6 @@ import {
   VENDOR,
   withoutMeasurement,
 } from './report-shared.ts';
-import type { ScoreBarPart } from './report-shared.ts';
 
 /** Escapes text for HTML content and attribute values alike. */
 function esc(value: string | number): string {
@@ -140,17 +137,19 @@ const STYLES = `
     letter-spacing: 0.08em;
     color: #5c5f61;
   }
-  .summary__score { font-size: 34pt; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
-  .summary__max { font-size: 12pt; font-weight: 400; color: #5c5f61; }
+  /* The second figure of the card, a step below the score in the ring beside it. */
+  .summary__score { font-size: 26pt; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
   .finding__item--marked { color: #5c5f61; }
-  .score-bar { margin: 0 0 10pt; }
-  .score-bar__chart { display: block; width: 100%; height: 12pt; border-radius: 6pt; overflow: hidden; }
-  .score-bar__legend { display: flex; flex-wrap: wrap; gap: 2pt 12pt; margin: 4pt 0 0;
-    padding: 0; list-style: none; font-size: 8.5pt; color: #5c5f61; }
-  .score-bar__legend li { display: flex; align-items: center; gap: 3pt; }
-  .score-bar__swatch { display: inline-block; width: 7pt; height: 7pt; border-radius: 1pt; }
-  .decisions { margin: 8pt 0 0; padding: 5pt 7pt; font-size: 9pt;
-    border-left: 2pt solid #9ea0a3; background: #f4f6f8; }
+  .score-ring { position: relative; width: 78pt; height: 78pt; margin-top: 3pt; }
+  .score-ring__dial { display: block; width: 100%; height: 100%; }
+  /* Centred in the ring, both lines together, so the figure and what it is out of
+     read as one thing. */
+  .score-ring__figures { position: absolute; inset: 0; display: flex;
+    flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+  .score-ring__value { font-size: 22pt; font-weight: 700; letter-spacing: -0.02em; }
+  .score-ring__max { margin-top: 2pt; font-size: 7.5pt; white-space: nowrap; color: #5c5f61; }
+  .decisions { margin: 8pt 0 0; padding-left: 7pt; font-size: 9pt;
+    border-left: 2pt solid #d6d9dc; color: #5c5f61; }
   .summary__facts { flex: 1; min-width: 40%; }
   .summary__note { margin-top: 4pt; font-size: 8.5pt; color: #5c5f61; }
 
@@ -297,11 +296,9 @@ export function reportToPrintHtml({
     // The score opens the conversation, the sum of the estimates is what it is
     // about, so both are figures of the same size.
     '<div class="summary__figure"><div class="summary__label">Overall score</div>',
-    '<div class="summary__score">',
-    result.overallScore === null ? 'n/a' : esc(scoreText(result.overallScore)),
-    '<span class="summary__max"> / 100</span></div>',
     /* No second figure beside the score: what the difference between the two means
        takes a sentence, and the sentence is directly below. */
+    scoreRing(result),
     '</div>',
     '<div class="summary__figure"><div class="summary__label">Findings</div>',
     `<div class="summary__score">${result.findings.length}</div></div>`,
@@ -331,7 +328,6 @@ export function reportToPrintHtml({
 
   parts.push(
     '<h2>Where the points went</h2>',
-    compositionBar(result),
     categoriesTable(result),
   );
 
@@ -416,64 +412,56 @@ export function reportToPrintHtml({
 const FULL_SCORE = 100;
 
 
-/** Height of the bar in its own coordinates, scaled to the page by CSS. */
-const BAR_HEIGHT = 10;
+/**
+ * Geometry of the dial, in its own coordinates.
+ *
+ * Half the box, and the radius that leaves the stroke room inside it rather than
+ * half outside: (108 - 10) / 2 = 49. The arc is one stroked circle whose dash is
+ * the score's share of the circumference, turned back a quarter so it starts at the
+ * top where a dial starts.
+ */
+const RING_SIZE = 108;
+const RING_STROKE = 10;
+const RING_CENTRE = 54;
+const RING_RADIUS = 49;
+const RING_LENGTH = Math.PI * (RING_SIZE - RING_STROKE);
+const QUARTER_TURN = -90;
 
-/** Paper has no theme to follow, so the parts of the bar carry fixed colours. */
-const BAR_FILL: Record<ScoreBarPart['kind'], string> = {
-  kept: '#59a869',
-  /* Hatched rather than coloured: these points are the reader's own doing, not
-     something the instance did. */
-  decisions: 'url(#score-bar-decisions)',
-  loss: '#db5860',
-};
+/** Paper has no theme to follow, so the dial carries fixed colours. */
+const RING_TRACK = '#e6e9ec';
+const RING_ARC = '#3574f0';
 
 /**
- * The score as one bar of a hundred points.
+ * The score inside the hundred it is out of.
  *
- * The same picture as in the app, and for the same reason: the table below states
- * each category's own number, and only the widths here show what that costs the
- * overall score. Printed as an SVG, so it survives a PDF at any zoom.
+ * The same picture as in the app, and for the same reasons: a full circle is a
+ * hundred, so the maximum is the shape rather than a scale to read, and the app's
+ * own mark is a dial. What is missing is not broken down here - the table below
+ * names every area with what it was worth and what it lost, and two pictures of
+ * one thing read as two things.
  */
-function compositionBar(result: ScanResult): string {
-  const composition = scoreComposition(result);
-  if (composition === null) {
-    return '';
-  }
-  const segments = scoreBarParts(composition);
-
-  let offset = 0;
-  const rects = segments.map((segment) => {
-    const x = offset;
-    offset += segment.points;
-    return (
-      `<rect x="${round(x)}" y="0" width="${round(Math.max(segment.points, 0))}" ` +
-      `height="${BAR_HEIGHT}" fill="${BAR_FILL[segment.kind]}" ` +
-      `fill-opacity="${segment.opacity}"/>`
-    );
-  });
-  /* The hatch has to be in the legend too, or the one part of the bar that is not a
-     measurement looks like just another colour. */
-  const swatch = (part: ScoreBarPart): string =>
-    part.kind === 'decisions'
-      ? `background:repeating-linear-gradient(45deg,${BAR_FILL.kept} 0 2px,#ffffff 2px 4px)`
-      : `background:${BAR_FILL[part.kind]};opacity:${part.opacity}`;
-  const legend = segments.map(
-    (segment) =>
-      `<li><span class="score-bar__swatch" style="${swatch(segment)}"></span>` +
-      `${esc(segment.label)} ${esc(oneDecimal(segment.points))}</li>`,
-  );
+function scoreRing(result: ScanResult): string {
+  const { overallScore } = result;
+  const arc =
+    overallScore === null
+      ? ''
+      : `<circle cx="${RING_CENTRE}" cy="${RING_CENTRE}" r="${RING_RADIUS}" ` +
+        `fill="none" stroke="${RING_ARC}" stroke-width="${RING_STROKE}" ` +
+        `stroke-linecap="round" stroke-dasharray="` +
+        `${round((Math.max(overallScore, 0) / FULL_SCORE) * RING_LENGTH)} ${round(RING_LENGTH)}" ` +
+        `transform="rotate(${QUARTER_TURN} ${RING_CENTRE} ${RING_CENTRE})"/>`;
   return (
-    '<div class="score-bar">' +
-    `<svg class="score-bar__chart" viewBox="0 0 100 ${BAR_HEIGHT}" preserveAspectRatio="none">` +
-    '<defs><pattern id="score-bar-decisions" width="2" height="2" patternTransform="rotate(45)" ' +
-    `patternUnits="userSpaceOnUse"><rect width="2" height="2" fill="${BAR_FILL.kept}" ` +
-    `fill-opacity="0.35"/><line x1="0" y1="0" x2="0" y2="2" stroke="${BAR_FILL.kept}" ` +
-    'stroke-width="1"/></pattern></defs>' +
-    rects.join('') +
+    '<div class="score-ring">' +
+    `<svg class="score-ring__dial" viewBox="0 0 ${RING_SIZE} ${RING_SIZE}">` +
+    `<circle cx="${RING_CENTRE}" cy="${RING_CENTRE}" r="${RING_RADIUS}" fill="none" ` +
+    `stroke="${RING_TRACK}" stroke-width="${RING_STROKE}"/>` +
+    arc +
     '</svg>' +
-    `<ul class="score-bar__legend">${legend.join('')}</ul>` +
-    '</div>'
+    '<div class="score-ring__figures">' +
+    `<div class="score-ring__value">${overallScore === null ? 'n/a' : esc(scoreText(overallScore))}</div>` +
+    // In words, because that is the sentence a reader needs and no arc can say it.
+    '<div class="score-ring__max">out of 100</div>' +
+    '</div></div>'
   );
 }
 

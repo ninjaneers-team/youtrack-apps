@@ -44,7 +44,8 @@
 }
 
 /* The same figure as on the report page, in the size a tile has room for: tight
-   tracking, tabular figures, and the maximum kept quiet beside it. */
+   tracking, tabular figures, and the maximum beside it - legible, because it is
+   what says which direction on this scale is the good one. */
 .score-tile__value {
   font-size: 2rem;
   font-weight: 650;
@@ -54,10 +55,10 @@
 }
 
 .score-tile__max {
-  font-size: 1rem;
+  font-size: 1.1rem;
   font-weight: 400;
   letter-spacing: 0;
-  color: var(--quiet);
+  color: var(--ring-text-color);
 }
 
 .score-tile__offer {

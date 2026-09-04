@@ -448,12 +448,6 @@ export function decisionSentence(effect: DecisionEffect): string {
 
 // --- What the score is made of -----------------------------------------------
 
-export interface ScoreSegment {
-  category: Category;
-  /** Points of the overall score this category took away. */
-  points: number;
-}
-
 /**
  * What a part of the report is worth of the hundred, and what it took away.
  *
@@ -521,97 +515,6 @@ export function checkPoints(
   }
   const worth = ofCategory.worth * (weight / scored.ranWeight);
   return { worth, lost: worth * ratio };
-}
-
-/** How much fainter each following loss is drawn, so their order stays readable. */
-const FADE_STEP = 0.15;
-const FADE_FLOOR = 0.4;
-
-/** One part of the score bar: how wide, what it is called, how strongly drawn. */
-export interface ScoreBarPart {
-  key: string;
-  label: string;
-  points: number;
-  kind: 'kept' | 'decisions' | 'loss';
-  opacity: number;
-}
-
-/**
- * The score bar as parts, for whoever draws it.
- *
- * The page and the printed document draw the same bar with different means - CSS
- * variables against fixed colours on paper - but the order of the parts, their
- * names and the fading are the same picture, and a picture that is assembled twice
- * is two pictures a release apart.
- */
-export function scoreBarParts(composition: ScoreComposition): ScoreBarPart[] {
-  const kept: ScoreBarPart = {
-    key: 'kept',
-    label: 'Kept',
-    points: composition.kept,
-    kind: 'kept',
-    opacity: 1,
-  };
-  const decisions: ScoreBarPart[] =
-    composition.decisions > 0
-      ? [
-          {
-            key: 'decisions',
-            label: 'Marked as intentional',
-            points: composition.decisions,
-            kind: 'decisions',
-            opacity: 1,
-          },
-        ]
-      : [];
-  const losses = composition.losses.map((loss, index) => ({
-    key: loss.category,
-    label: CATEGORY_LABEL[loss.category],
-    points: loss.points,
-    kind: 'loss' as const,
-    // Largest first at full strength, each following one a step fainter.
-    opacity: Math.max(FADE_FLOOR, 1 - index * FADE_STEP),
-  }));
-  return [kept, ...decisions, ...losses];
-}
-
-export interface ScoreComposition {
-  /** The measured score: what is left after every category took its points. */
-  kept: number;
-  /** Points handed back because findings are marked as intentional. */
-  decisions: number;
-  /** One per scored category, strongest loss first. */
-  losses: ScoreSegment[];
-}
-
-/**
- * The score split into what it is made of, in points of the same hundred.
- *
- * A single number says nothing about where it came from, and a table of category
- * scores hides the size of each: a category worth 3 that lost half its points costs
- * more of the overall score than one worth 1 that lost all of them. Splitting it
- * makes the weights visible without explaining them.
- *
- * The parts add up to a hundred: what is kept, what decisions handed back, and what
- * each category took away. Null when not a single check ran.
- */
-export function scoreComposition(result: ScanResult): ScoreComposition | null {
-  const scored = result.categories.filter(c => c.score !== null);
-  const weightSum = scored.reduce((sum, c) => sum + CATEGORY_WEIGHT[c.category], 0);
-  if (weightSum === 0 || result.overallScore === null) {
-    return null;
-  }
-  const losses = scored
-    .map(c => ({
-      category: c.category,
-      points: categoryPoints(result, c.category)?.lost ?? 0,
-    }))
-    .filter(segment => segment.points > 0)
-    .sort((a, b) => b.points - a.points);
-  const decisions = result.overallAsMeasured === null
-    ? 0
-    : result.overallScore - result.overallAsMeasured;
-  return { kept: result.overallScore - decisions, decisions, losses };
 }
 
 // --- Where a finding leads ---------------------------------------------------

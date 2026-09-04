@@ -41,8 +41,8 @@ import {
   RATIO_DECIMALS,
   SCORE_METHOD,
   duration,
-  scoreBarParts,
-  scoreComposition,
+  decisionEffect,
+  decisionSentence,
   trendSentence,
   scanFateNote,
   WEIGHT_REASON,
@@ -767,80 +767,83 @@ const FindingCard: React.FunctionComponent<FindingCardProps> = ({
   );
 };
 
-/** Height of the composition bar in its own coordinates. */
-const BAR_HEIGHT = 10;
+/**
+ * The score against the hundred it is out of.
+ *
+ * A track with the score filled in and the rest left empty, which is the shape the
+ * table below already uses for every category and the shape a reader has met on
+ * every score they have seen. Where the missing points went is not drawn here: the
+ * table says it in words, with the area, the points lost, and what the area was
+ * worth. Two pictures of one thing read as two things.
+ */
+/**
+ * Geometry of the ring, in its own coordinates.
+ *
+ * The arc is drawn as one stroked circle whose dash pattern is the score: a dash of
+ * the score's share of the circumference, then a gap for the rest. Rotated so it
+ * starts at the top, where a reader expects a dial to start.
+ */
+const RING_SIZE = 108;
+const RING_STROKE = 10;
+/* Half the box, and the radius that leaves the stroke room inside it rather than
+   half outside: (108 - 10) / 2 = 49. */
+const RING_CENTRE = 54;
+const RING_RADIUS = 49;
+/** Circumference, so the dash pattern can be a share of it. */
+const RING_LENGTH = Math.PI * (RING_SIZE - RING_STROKE);
+/** A full ring. */
+const FULL_SCORE = 100;
+/** Back a quarter turn, so the arc starts at the top where a dial starts. */
+const QUARTER_TURN = -90;
 
 /**
- * The score as one bar of a hundred points.
+ * The score inside the hundred it is out of.
  *
- * A number alone says nothing about where it came from, and the table below cannot
- * show the weights: a category worth 3 that lost half its points costs more of the
- * score than one worth 1 that lost all of them. Here the widths are those weights.
- * The part that decisions handed back is drawn separately, because a good score that
- * rests on decisions is a different statement from a good score that does not.
+ * A ring rather than a bar, for two reasons. The maximum is the shape itself - a
+ * full circle is a hundred, and how much of it is missing is visible without a
+ * scale to read - and the app's own mark is a dial, so the page repeats the mark
+ * instead of opening a second visual language. What is missing is not broken down
+ * here: the table below names every area with what it was worth and what it lost,
+ * and two pictures of one thing read as two things.
+ *
+ * "out of 100" in words under the figure, because that is the sentence a reader
+ * needs and no arc can say it. A slash beside the number was small print.
  */
-const ScoreBar: React.FunctionComponent<{result: ScanResult}> = ({result}) => {
-  const composition = scoreComposition(result);
-  if (composition === null) {
-    return null;
-  }
-  const parts = scoreBarParts(composition);
-  let offset = 0;
-  return (
-    <div className="score-bar">
-      <svg
-        className="score-bar__chart"
-        viewBox={`0 0 100 ${BAR_HEIGHT}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={`The score of ${oneDecimal(composition.kept)} points, what decisions handed back, and what each category took away`}
-      >
-        <defs>
-          {/* Decisions are hatched rather than coloured: they are the reader's own
-              doing, not something the instance did. */}
-          <pattern
-            id="score-bar-decisions"
-            width="2"
-            height="2"
-            patternTransform="rotate(45)"
-            patternUnits="userSpaceOnUse"
-          >
-            <rect width="2" height="2" className="score-bar__hatch-ground"/>
-            <line x1="0" y1="0" x2="0" y2="2" className="score-bar__hatch-line"/>
-          </pattern>
-        </defs>
-        {parts.map(part => {
-          const x = offset;
-          offset += part.points;
-          return (
-            <rect
-              key={part.key}
-              className={`score-bar__part score-bar__part--${part.kind}`}
-              x={x}
-              y={0}
-              width={Math.max(part.points, 0)}
-              height={BAR_HEIGHT}
-              fillOpacity={part.opacity}
-            >
-              <title>{`${part.label}: ${plural(oneDecimal(part.points), 'point')}`}</title>
-            </rect>
-          );
-        })}
-      </svg>
-      <ul className="score-bar__legend">
-        {parts.map(part => (
-          <li key={part.key} className="score-bar__legend-item">
-            <span
-              className={`score-bar__swatch score-bar__swatch--${part.kind}`}
-              style={{opacity: part.opacity}}
-            />
-            {`${part.label} ${scoreText(part.points)}`}
-          </li>
-        ))}
-      </ul>
+const ScoreRing: React.FunctionComponent<{points: number | null}> = ({points}) => (
+  <div className="score-ring">
+    <svg
+      className="score-ring__dial"
+      viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
+      role="img"
+      aria-label={points === null ? 'No score' : `${oneDecimal(points)} out of 100 points`}
+    >
+      <circle
+        className="score-ring__track"
+        cx={RING_CENTRE}
+        cy={RING_CENTRE}
+        r={RING_RADIUS}
+        strokeWidth={RING_STROKE}
+      />
+      {points === null ? null : (
+        <circle
+          className="score-ring__arc"
+          cx={RING_CENTRE}
+          cy={RING_CENTRE}
+          r={RING_RADIUS}
+          strokeWidth={RING_STROKE}
+          strokeDasharray={`${(Math.max(points, 0) / FULL_SCORE) * RING_LENGTH} ${RING_LENGTH}`}
+          transform={`rotate(${QUARTER_TURN} ${RING_CENTRE} ${RING_CENTRE})`}
+        />
+      )}
+    </svg>
+    <div className="score-ring__figures">
+      <div className="score-ring__value">
+        {points === null ? 'n/a' : scoreText(points)}
+      </div>
+      <div className="score-ring__max">{'out of 100'}</div>
     </div>
-  );
-};
+  </div>
+);
 
 /**
  * What a category kept, in points of the same hundred as the score above it.
@@ -977,18 +980,17 @@ const ScoreHeader: React.FunctionComponent<{
   restored: boolean;
   itemsOmitted: boolean;
   fate: ScanFate;
-}> = ({result, at, cost, restored, itemsOmitted, fate}) => {
+  markedItems: IgnoredItems;
+}> = ({result, at, cost, restored, itemsOmitted, fate, markedItems}) => {
+  const decision = decisionEffect(result, markedItems);
   return (
     <section className="score">
       <div className="score__figures">
         <div className="score__figure">
           <div className="score__label">{'Overall score'}</div>
-          <div className="score__value">
-            {result.overallScore === null ? 'n/a' : scoreText(result.overallScore)}
-            <span className="score__max">{' / 100'}</span>
-          </div>
           {/* No second figure here: what the difference between the two scores
               means takes a sentence, and the sentence is beside this card. */}
+          <ScoreRing points={result.overallScore}/>
         </div>
         {/* Countable, and the reader can check it against the list below. No
           duration: an estimate for an unknown instance would be guessed, and one
@@ -1005,11 +1007,6 @@ const ScoreHeader: React.FunctionComponent<{
         </div>
       </div>
       <div className="score__meta">
-        {/* The picture of the hundred belongs beside the number it explains. It
-            replaces three sentences about what the decisions did: the hatched band
-            and its legend entry show that, and a reader who wants the arithmetic
-            unfolds the line below. */}
-        <ScoreBar result={result}/>
         <ScanNote
           at={at}
           cost={cost}
@@ -1017,6 +1014,11 @@ const ScoreHeader: React.FunctionComponent<{
           itemsOmitted={itemsOmitted}
           fate={fate}
         />
+        {/* After the note, not before it: what a decision did to the score is a
+            statement about absence - points that were not measured - and no picture
+            carries that, but it is not the headline either. The same sentence the
+            exports use, so all three media say it the same way. */}
+        {decision === null ? null : <p className="score__decisions">{decisionSentence(decision)}</p>}
         <details className="score__formula">
           <summary>{'How the score is calculated'}</summary>
           <p>{SCORE_METHOD}</p>
@@ -1384,7 +1386,9 @@ const TrendSection: React.FunctionComponent<{
           {withScore ? (
             <p className="trend__latest">
               <strong className="trend__score">{scoreText(newest.score)}</strong>
-              {' / 100 - '}
+              {/* In words, like the ring: a slash and a maximum on one page and
+                  words for the same thing on another read as two scales. */}
+              {' out of 100 - '}
               {`${plural(latest.findings, 'finding')} - ${agePhrase(age)}`}
             </p>
           ) : null}
@@ -1484,6 +1488,7 @@ const Report: React.FunctionComponent<ReportProps> = ({
         restored={restored}
         itemsOmitted={itemsOmitted}
         fate={fate}
+        markedItems={markedItems}
       />
       {trend}
       <Categories categories={result.categories} result={result}/>

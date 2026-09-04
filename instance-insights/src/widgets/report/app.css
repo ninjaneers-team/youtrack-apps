@@ -76,12 +76,6 @@
 
 /* The two places a score becomes a length: they follow the number that changed. */
 .categories__bar-fill,
-.score-bar__part {
-  transition:
-    width var(--insights-motion) var(--insights-ease),
-    x var(--insights-motion) var(--insights-ease);
-}
-
 .finding,
 .finding__item-name,
 .finding__items summary,
@@ -213,30 +207,14 @@
   color: var(--quiet);
 }
 
-/* The number the report exists for. Tight tracking and tabular figures so it
-   reads as one value rather than as three digits. */
+/* The second figure of the card. A step below the score in the ring beside it,
+   because a page with two equal leads has none. */
 .score__value {
-  font-size: 3rem;
+  font-size: 2.25rem;
   font-weight: 650;
   line-height: 1;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
-}
-
-.score__max {
-  font-size: 1rem;
-  font-weight: 400;
-  color: var(--quiet);
-  letter-spacing: 0;
-}
-
-/* What the score would be without any decision - directly under the number it
-   differs from, because that is where the question comes up. */
-.score__measured {
-  margin-top: 0.25rem;
-  font-size: 0.85rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--ring-secondary-color);
 }
 
 .score__meta {
@@ -244,14 +222,16 @@
   min-width: 18rem;
 }
 
-/* The decisions behind the score. Marked out rather than mixed into the notes: it
-   answers why a number moved without anyone touching the instance. */
+/* The decisions behind the score. A note rather than a panel: it answers why a
+   number moved without anyone touching the instance, which the reader needs in
+   order to place the score - but a bordered box of four lines drew more attention
+   than the score itself. */
 .score__decisions {
-  margin: 0 0 0.5rem;
-  padding: 0.4rem 0.6rem;
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--line);
   font-size: 0.85rem;
-  border-left: 3px solid var(--ring-icon-secondary-color);
-  background: var(--ring-sidebar-background-color);
+  color: var(--quiet);
 }
 
 .score__note {
@@ -326,81 +306,60 @@
   background: var(--sunken);
 }
 
-/* The score as one bar ----------------------------------------------------- */
+/* The score inside the hundred it is out of --------------------------------- */
 
-.score-bar {
-  /* Aligned with the numbers to its left rather than with their labels. */
-  margin: var(--space-3) 0 0;
+.score-ring {
+  position: relative;
+  width: 8.5rem;
+  height: 8.5rem;
+  margin-top: var(--space-2);
 }
 
-.score-bar__chart {
+.score-ring__dial {
   display: block;
   width: 100%;
-  height: 1.15rem;
-  border-radius: 999px;
-  overflow: hidden;
+  height: 100%;
 }
 
-.score-bar__part--kept {
-  fill: var(--ring-icon-success-color);
+/* The whole hundred. What the score does not reach stays open, which is what makes
+   the shape itself the maximum - no scale to read. */
+.score-ring__track {
+  fill: none;
+  stroke: var(--sunken);
 }
 
-/* Not a colour of its own: the reader's decision sits on top of the kept points,
-   hatched, so a score resting on decisions is visible as such. */
-.score-bar__part--decisions {
-  fill: url(#score-bar-decisions);
+.score-ring__arc {
+  fill: none;
+  stroke: var(--ring-main-color);
+  stroke-linecap: round;
+  transition: stroke-dasharray var(--insights-motion) var(--insights-ease);
 }
 
-.score-bar__hatch-ground {
-  fill: var(--ring-icon-success-color);
-  fill-opacity: 0.35;
-}
-
-.score-bar__hatch-line {
-  stroke: var(--ring-icon-success-color);
-  stroke-width: 1;
-}
-
-.score-bar__part--loss {
-  fill: var(--ring-icon-error-color);
-}
-
-.score-bar__legend {
+/* Centred in the ring, both lines together, so the figure and what it is out of
+   read as one thing. */
+.score-ring__figures {
+  position: absolute;
+  inset: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-3);
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  list-style: none;
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--quiet);
-  font-variant-numeric: tabular-nums;
-}
-
-.score-bar__legend-item {
-  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
+  justify-content: center;
+  line-height: 1;
 }
 
-.score-bar__swatch {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 999px;
-  background: var(--ring-icon-error-color);
+.score-ring__value {
+  font-size: 2.5rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
-.score-bar__swatch--kept {
-  background: var(--ring-icon-success-color);
-}
-
-.score-bar__swatch--decisions {
-  background: repeating-linear-gradient(
-    45deg,
-    var(--ring-icon-success-color) 0 2px,
-    transparent 2px 4px
-  );
+/* One line, whatever the ring's size: broken over two it read as two labels. */
+.score-ring__max {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  color: var(--quiet);
 }
 
 /* Trend ------------------------------------------------------------------- */
