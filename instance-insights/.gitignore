@@ -6,6 +6,10 @@ node_modules/
 dist/
 instance-insights.zip
 
+# What npm pack leaves behind. It is not the app package - it holds the sources
+# and no dist/ - but it is two megabytes and lands right next to one.
+*.tgz
+
 # Credentials for the local instance — never commit these.
 .env
 .env.local
