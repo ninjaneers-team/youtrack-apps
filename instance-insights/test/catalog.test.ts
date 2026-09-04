@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { CHECKS } from '../src/checks/catalog.ts';
-import { runScan } from '../src/engine.ts';
+import { effectiveRatio, runChecks, runScan, score } from '../src/engine.ts';
 import { CATEGORY_WEIGHT, DEFAULT_CONFIG, severityFromRatio } from '../src/types.ts';
 import type { ScanContext } from '../src/types.ts';
 import { MockYouTrackClient, recordingClient, syntheticInstance } from './mock-client.ts';
@@ -109,27 +109,71 @@ test('accounts younger than the window are not counted as inactive licences', as
   assert.deepEqual(logins, ['j.doe', 'm.novak', 'svc-jenkins']);
 });
 
-test('aging WIP measures every board, not the first one that qualifies', async () => {
+test('aging WIP counts the boards it lists', async () => {
   const result = await runScan(CHECKS, contextOn(syntheticInstance(NOW)));
   const aging = result.findings.find((f) => f.checkId === 'process.aging-wip');
 
-  // Team WEB and Kanban APP each hold 8 of 20 cards that have not moved; Release
-  // LEGACY has middle columns but nothing in them, so it contributes nothing.
-  assert.equal(aging?.ratio, 16 / 40);
-  /* Both numbers are in the headline now: repeating them underneath made a card
-     look like two unrelated statements. What is left in the evidence is the fact
-     the sentence cannot hold - how many boards were measured. */
-  assert.match(aging?.headline ?? '', /16 of 40 cards in progress/);
-  assert.equal(
-    aging?.evidence.find((e) => e.label === 'Boards with work in progress')?.value,
-    2,
-  );
+  /* Three boards carry work and two of them carry work that stopped. Cards cannot
+     be the population: the same issue sits on several boards, so adding them up
+     counted it once per board - and asking the instance for the distinct number
+     took one query naming every board at once, the only question in this check that
+     could not fail without taking the whole check down with it. It did, on an
+     instance with thirty-three boards. A board does not overlap with itself. */
+  assert.equal(aging?.ratio, 2 / 3);
+  assert.match(aging?.headline ?? '', /2 of 3 boards carry cards that have not moved/);
+  /* Every board answered, so the report says nothing about boards it could not
+     count - a line about none of them reads as a limit that is not there. */
+  assert.deepEqual(aging?.evidence, []);
+  /* The rows keep the cards of their own board, where they are true and where the
+     work is done. */
   assert.deepEqual(
-    (aging?.items ?? []).map((i) => i.label),
-    ['Team WEB', 'Kanban APP'],
+    (aging?.items ?? []).map((i) => `${i.label}: ${i.detail}`),
+    ['Team WEB: 8 of 20 cards', 'Kanban APP: 8 of 20 cards'],
   );
   // A share measured on one arbitrary board would be read as the instance.
   assert.ok(!/Team WEB/.test(aging?.headline ?? ''), 'the headline names no board');
+});
+
+test('marking a board takes it out of both sides of the share', async () => {
+  const outcomes = await runChecks(CHECKS, contextOn(syntheticInstance(NOW)));
+  const aging = outcomes.find((o) => o.checkId === 'process.aging-wip')?.finding;
+  assert.ok(aging);
+
+  /* What the population being boards buys: one board weighs as much as any other,
+     so a board marked as intentional leaves the numerator and the denominator
+     together. With cards it had no answer that did not depend on which board was
+     marked first, and the control had to be withheld. */
+  const marked = new Map([['process.aging-wip', new Set([aging.items?.[0]?.id ?? ''])]]);
+  const scored = score(outcomes, new Set(), marked);
+  const after = scored.findings.find((f) => f.checkId === 'process.aging-wip');
+  assert.equal(effectiveRatio(after ?? aging, marked.get('process.aging-wip')), 1 / 2);
+});
+
+test('aging WIP asks whether a card is on the board, not just in its projects', async () => {
+  const {client: counting, queries} = recordingClient(syntheticInstance(NOW));
+  const agingWip = CHECKS.find((c) => c.id === 'process.aging-wip');
+  assert.ok(agingWip);
+
+  await runScan([agingWip], contextOn(counting));
+
+  /* The projects of a board are not the board. Counting by project alone reported
+     cards on boards whose columns were empty, and missed cards that were on the
+     board - measured against a live instance, it was wrong on every board it
+     touched, in both directions. Board membership is a field: `Board <name>`
+     carries the sprint a card sits in. */
+  for (const query of queries) {
+    assert.match(query, /has: \{Board /, 'every count asks about board membership');
+    assert.match(query, /project: /, 'and keeps the project scope beside it');
+  }
+  /* On a board that plans in sprints, a card nobody scheduled sits in a sprint of
+     its own that `has:` does not count, so those sprints are named beside it. On a
+     board that plans without them, naming the sprint it still reports produced a
+     count the instance never delivered, so it is asked with `has:` alone. */
+  const namesSprint = (board: string): boolean =>
+    queries.some((q) => q.includes(`{Board ${board}}: {First sprint}`));
+  assert.equal(namesSprint('Release LEGACY'), true, 'a sprint board names its sprints');
+  assert.equal(namesSprint('Team WEB'), false, 'a flow board is asked with has: alone');
+  assert.equal(namesSprint('Kanban APP'), false, 'a flow board is asked with has: alone');
 });
 
 test('a board asks one question per board, not one per column', async () => {
@@ -141,10 +185,10 @@ test('a board asks one question per board, not one per column', async () => {
 
   await runScan([agingWip], contextOn(counting));
 
-  // Three boards: two counts each where there is work in flight, one where the
-  // board turns out to hold none. Release LEGACY alone has seven middle columns,
-  // which one query per column would make fourteen requests on its own.
-  assert.equal(queries.length, 5);
+  /* Three boards, two questions each: what it carries, and how much of that
+     stopped. Release LEGACY alone has seven middle columns, which one query per
+     column would make fourteen requests on its own. */
+  assert.equal(queries.length, 6);
   for (const query of queries) {
     assert.match(query, / and \(/, 'a group in parentheses needs an explicit and');
   }
@@ -161,6 +205,7 @@ test('aging WIP is skipped when no board has a column in between', async () => {
         name: 'Two columns only',
         usesSprints: false,
         columnField: 'State',
+      sprints: ['First sprint'],
         projects: ['P'],
         columns: [
           { presentation: 'Open', fieldValues: ['Open'] },
@@ -223,6 +268,7 @@ test('a board that spans an archived project says so where it is named', async (
         id: 'b',
         name: 'Mixed board',
         columnField: 'State',
+      sprints: ['First sprint'],
         projects: ['ACT', 'OLD'],
         usesSprints: false,
         columns: [
@@ -275,6 +321,7 @@ test('a board whose only project is archived is not judged by its columns', asyn
         id: 'b',
         name: 'Board of a retired project',
         columnField: 'State',
+      sprints: ['First sprint'],
         projects: ['OLD'],
         usesSprints: false,
         columns: Array.from({ length: 9 }, (_, i) => ({
@@ -556,6 +603,7 @@ test('boards are not judged against archived projects when there are none', asyn
         name: 'Board',
         usesSprints: false,
         columnField: 'State',
+      sprints: ['First sprint'],
         projects: ['WEB'],
         columns: [],
       },
@@ -650,6 +698,7 @@ test('a board with nothing in flight needs no limit on it', async () => {
         name: 'Empty flow',
         usesSprints: false,
         columnField: 'State',
+      sprints: ['First sprint'],
         projects: ['WEB'],
         columns: [
           { presentation: 'Open', fieldValues: ['Open'], wipLimitMin: null, wipLimitMax: null },
@@ -733,9 +782,10 @@ test('the checks whose objects cannot be marked one by one say why', async () =>
     .sort();
 
   /* Two reasons remain, each a property of the check: the objects are accounts and
-     are never stored, or the check counts issues without listing them. A check whose
-     objects weigh differently from one another is not one of them - it carries the
-     weights on the items instead. Pinned so a new check is a decision. */
+     are never stored, or the check counts issues without listing them. A check
+     whose objects weigh differently from one another is not one of them - it
+     carries the weights on the items instead. Pinned so a new check is a
+     decision. */
   assert.deepEqual(withoutTotal, [
     'licensing.inactive-users',
     'process.stale-unresolved',

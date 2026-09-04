@@ -59,29 +59,53 @@ export const QUERIES = {
   projectActivitySince: (shortName: string, since: string): string =>
     `project: {${shortName}} updated: ${since} .. *`,
   /**
-   * Issues a board holds in its columns between the first and the last - one query
-   * for the whole board rather than one per column.
+   * The cards a board holds, whichever sprint they sit in.
    *
-   * Three details the parser insists on. Field and value names are braced because
-   * either can contain spaces (`{Board Status}: {In Progress}`). A group in
-   * parentheses needs an explicit `and` in front of it; without it the instance
-   * rejects the query rather than interpreting it. And the values are joined with
-   * `or`, not with commas: a comma list following a project clause is rejected too.
+   * A board is a search field: `Board <name>` carries the sprint an issue sits in,
+   * so `has:` asks whether the issue is on the board at all. On a board that plans
+   * in sprints that is not the whole answer - a card nobody scheduled sits in a
+   * sprint of its own that `has:` does not count, so those sprints are named beside
+   * it. Measured against a live instance: `has:` alone found no card at all on two
+   * such boards out of four.
+   *
+   * A board that plans without sprints is asked with `has:` alone, and that is not
+   * a shortcut. Such a board still reports a sprint, and naming it produced a count
+   * the instance never delivered - polled for twenty seconds and beyond, always
+   * -1 - while `has:` answered the same board correctly in under a fifth of a
+   * second, in every run.
+   */
+  onBoard: (board: string, usesSprints: boolean, sprints: readonly string[]): string =>
+    usesSprints
+      ? `(has: {Board ${board}}` +
+        sprints.map((sprint) => ` or {Board ${board}}: {${sprint}}`).join('') +
+        ')'
+      : `has: {Board ${board}}`,
+  /**
+   * Cards a board holds in the columns between its first and its last.
+   *
+   * Four details the parser and the instance insist on. Field and value names are
+   * braced because either can contain spaces (`{Board Status}: {In Progress}`). A
+   * group in parentheses needs an explicit `and` in front of it. Values are joined
+   * with `or`, not with commas: a comma list after a project clause is rejected.
+   * And the project scope stays even though the board clause already narrows the
+   * search - without it, the same board query answered in 140 ms on one run and
+   * was still being computed twenty seconds later on the next. It also keeps
+   * archived projects out, which search will not take as a scope anyway.
    */
   boardWip: (
+    board: string,
+    usesSprints: boolean,
+    sprints: readonly string[],
     projects: readonly string[],
     field: string,
     values: readonly string[],
   ): string =>
+    `${QUERIES.onBoard(board, usesSprints, sprints)} and ` +
     `project: ${projects.map((shortName) => `{${shortName}}`).join(', ')} and (` +
     `${values.map((value) => `{${field}}: {${value}}`).join(' or ')})`,
-  boardWipStale: (
-    projects: readonly string[],
-    field: string,
-    values: readonly string[],
-    cutoff: string,
-  ): string =>
-    `${QUERIES.boardWip(projects, field, values)} and updated: * .. ${cutoff}`,
+  /** Cards that have not moved since the cutoff, on one board or across many. */
+  notMovedSince: (cards: string, cutoff: string): string =>
+    `${cards} and updated: * .. ${cutoff}`,
 };
 
 /** Absolute YYYY-MM-DD `days` before ctx.now. Derived from now, no clock read. */
@@ -616,32 +640,48 @@ const boardsWithoutWipLimits: CheckDefinition = checkOf({
       );
     }
 
-    const cardCounts = requireCounts(
-      await ctx.client.countMany(
-        flowBoards.map((reach) =>
-          QUERIES.boardWip(
-            reach.projects,
-            reach.board.columnField,
-            wipColumns(reach.board).flatMap((c) => c.fieldValues),
-          ),
+    const cardCounts = await ctx.client.countMany(
+      flowBoards.map((reach) =>
+        QUERIES.boardWip(
+          reach.board.name,
+          reach.board.usesSprints,
+          reach.board.sprints,
+          reach.projects,
+          reach.board.columnField,
+          wipColumns(reach.board).flatMap((c) => c.fieldValues),
         ),
       ),
     );
 
     const carrying: Array<{ reach: BoardReach; cards: number }> = [];
     const without: Array<{ reach: BoardReach; cards: number }> = [];
+    let unanswered = 0;
     for (const [index, reach] of flowBoards.entries()) {
-      const cards = cardCounts[index] ?? 0;
-      if (cards === 0) continue;
-      carrying.push({ reach, cards });
+      const result = cardCounts[index];
+      /* A count the instance will not deliver is a board left out, not a failed
+         check. Asking a board about its own cards is a question the instance
+         sometimes answers in a fifth of a second and sometimes not at all, and one
+         such board used to take this whole check down with it. */
+      if (result === undefined || 'failed' in result) {
+        unanswered++;
+        continue;
+      }
+      if (result.count === 0) continue;
+      carrying.push({ reach, cards: result.count });
       const limited = reach.board.columns.some(
         (c) => c.wipLimitMin != null || c.wipLimitMax != null,
       );
-      if (!limited) without.push({ reach, cards });
+      if (!limited) without.push({ reach, cards: result.count });
     }
 
     if (carrying.length === 0) {
-      throw new CheckSkipped('No board without sprints carries work in flight.');
+      /* Two different statements, and the check may only make the one it measured:
+         that no board carries work in flight, or that it could not find out. */
+      throw new CheckSkipped(
+        unanswered > 0
+          ? `The instance would not count the cards of ${plural(unanswered, 'board')} that plans without sprints.`
+          : 'No board without sprints carries work in flight.',
+      );
     }
     if (without.length === 0) return null;
 
@@ -656,6 +696,11 @@ const boardsWithoutWipLimits: CheckDefinition = checkOf({
           label: 'Cards in flight without a limit',
           value: without.reduce((sum, b) => sum + b.cards, 0),
         },
+        /* Only when there is one: a line about no such board reads as a limit that
+           is not there. */
+        ...(unanswered > 0
+          ? [{ label: 'Boards the instance would not count', value: unanswered }]
+          : []),
       ],
       items: toItems(without, ({ reach, cards }) => ({
         id: reach.board.id,
@@ -701,74 +746,89 @@ const agingWip: CheckDefinition = checkOf({
     }
 
     const cutoff = isoDate(ctx.now, ctx.config.agingWipDays);
-    let inProgress = 0;
-    let aging = 0;
-    let measured = 0;
-    const stalled: Array<{ reach: BoardReach; stale: number; total: number }> = [];
+    /** What a board asks about: the cards it holds in its middle columns. */
+    const cardsOn = (reach: BoardReach): string =>
+      QUERIES.boardWip(
+        reach.board.name,
+        reach.board.usesSprints,
+        reach.board.sprints,
+        reach.projects,
+        reach.board.columnField,
+        wipColumns(reach.board).flatMap((c) => c.fieldValues),
+      );
 
     /* Every board, not the first one that qualifies: a share measured on one
        arbitrary board out of two hundred describes that board and would be read as
-       the instance. Two counts per board, whatever its number of columns, and both
-       batches go out as batches. */
-    const valuesOf = boards.map((reach) =>
-      wipColumns(reach.board).flatMap((c) => c.fieldValues),
+       the instance. Both batches go out as batches. */
+    const totals = await ctx.client.countMany(boards.map(cardsOn));
+    const carrying: Array<{ reach: BoardReach; total: number }> = [];
+    let unanswered = 0;
+    for (const [index, reach] of boards.entries()) {
+      const result = totals[index];
+      /* A board whose count the instance will not deliver is left out rather than
+         taken as empty, and the finding says how many - a share that quietly
+         dropped a board would read as a share of every board. */
+      if (result === undefined || 'failed' in result) {
+        unanswered++;
+      } else if (result.count > 0) {
+        carrying.push({ reach, total: result.count });
+      }
+    }
+    if (carrying.length === 0) {
+      // As above: not finding work in flight and not being able to ask differ.
+      throw new CheckSkipped(
+        unanswered > 0
+          ? `The instance would not count the cards of ${plural(unanswered, 'board')}.`
+          : 'No board carries work in progress right now.',
+      );
+    }
+
+    const stales = await ctx.client.countMany(
+      carrying.map(({ reach }) => QUERIES.notMovedSince(cardsOn(reach), cutoff)),
     );
-    const totals = requireCounts(
-      await ctx.client.countMany(
-        boards.map((reach, i) =>
-          QUERIES.boardWip(reach.projects, reach.board.columnField, valuesOf[i] ?? []),
-        ),
-      ),
-    );
-    const carrying = boards
-      .map((reach, index) => ({ reach, total: totals[index] ?? 0, values: valuesOf[index] ?? [] }))
-      .filter(({ total }) => total > 0);
-    const stales = requireCounts(
-      await ctx.client.countMany(
-        carrying.map(({ reach, values }) =>
-          QUERIES.boardWipStale(
-            reach.projects,
-            reach.board.columnField,
-            values,
-            cutoff,
-          ),
-        ),
-      ),
-    );
+    const stalled: Array<{ reach: BoardReach; stale: number; total: number }> = [];
     for (const [index, { reach, total }] of carrying.entries()) {
-      const stale = stales[index] ?? 0;
-      measured++;
-      inProgress += total;
-      aging += stale;
-      if (stale > 0) stalled.push({ reach, stale, total });
+      const result = stales[index];
+      if (result === undefined || 'failed' in result) {
+        unanswered++;
+      } else if (result.count > 0) {
+        stalled.push({ reach, stale: result.count, total });
+      }
     }
 
-    if (inProgress === 0) {
-      throw new CheckSkipped('No board carries work in progress right now.');
-    }
-    if (aging === 0) return null;
+    if (stalled.length === 0) return null;
 
-    const ratio = share(aging, inProgress);
+    /* Boards, not cards. The same issue can sit on two boards, so cards cannot be
+       added up across them - and asking the instance for the distinct number meant
+       one query naming every board at once, which is the one question in this check
+       that could not fail without taking the whole thing down. It did, on an
+       instance with thirty-three boards.
+
+       Counting what the finding lists needs no such question: a board does not
+       overlap with itself. Each row still carries the cards of its own board, where
+       they are true and where the work is done. */
+    const ratio = share(stalled.length, carrying.length);
     return {
       itemKind: 'board',
-      /* "Cards", not "issues": work in flight is counted per board, so an issue
-         that sits on two boards is two cards that stopped moving. */
-      headline: `${aging} of ${plural(inProgress, 'card')} in progress ${agree(aging, 'has', 'have')} not moved for more than ${ctx.config.agingWipDays} days.`,
+      headline: `${stalled.length} of ${plural(carrying.length, 'board')} ${agree(stalled.length, 'carries', 'carry')} cards that have not moved for more than ${ctx.config.agingWipDays} days.`,
       ratio,
-      /* Cards, not boards: a board taken out as intentional takes its own cards out
-         of both sides of the share, which is what the numbers on the items are for.
-         A backlog board that keeps its cards for months is the case this serves. */
-      affected: aging,
-      total: inProgress,
-      evidence: [
-        { label: 'Boards with work in progress', value: measured },
-      ],
+      /* One board weighs as much as any other here, because the population is
+         boards - so marking one takes it out of both sides of the share. */
+      affected: stalled.length,
+      total: carrying.length,
+      evidence:
+        /* Only when there is one. A board the instance would not count is a limit
+           of the measurement, and a reader who is not told treats the share as
+           covering every board. */
+        unanswered > 0
+          ? [{ label: 'Boards the instance would not count', value: unanswered }]
+          : [],
       items: toItems(stalled, ({ reach, stale, total }) => ({
         id: reach.board.id,
         label: reach.board.name,
         detail: `${stale} of ${plural(total, 'card')}${reachNote(reach.left)}`,
-        affected: stale,
-        measured: total,
+        affected: 1,
+        measured: 1,
       })),
     };
   },

@@ -82,8 +82,9 @@ score             = 100 - sum(points lost)
   every report states how many points rest on such decisions.
 - Single objects can be marked too, where a check names them: the share is then
   measured on what is left. An object carries the weight it was measured with, so a
-  board with eighteen cards standing still takes those eighteen out of the count,
-  not one board out of a list.
+  project holding four hundred issues takes those four hundred out of the count,
+  not one project out of a list. Where the objects are accounts there is no such
+  button: nothing about a person is stored.
 
 Severity (critical, high, medium, low) follows from the ratio. It orders the findings
 and colours them; it is not part of the arithmetic.
@@ -119,7 +120,7 @@ for a board, fewer than ten issues for a project. Every finding says when it may
 firing on something intentional, and none of them states a duration for the work - an
 estimate for an instance the app has never seen would be a guess.
 
-Three definitions are worth knowing, because they are not the obvious ones:
+Four definitions are worth knowing, because they are not the obvious ones:
 
 - **Inactive licences are measured by changes, not by sign-ins.** No API the app can
   reach exposes a last-login time, so the check reads the activity of each account:
@@ -132,6 +133,13 @@ Three definitions are worth knowing, because they are not the obvious ones:
   value; the reference is the number of issues in the projects the field is
   instantiated in. So the check costs one request per field regardless of how many
   projects there are, and still looks at every issue rather than a sample.
+- **A card counts as being on a board, not as being in its projects.** The two are
+  not the same: a board shows the cards placed on it, and an issue can sit in one of
+  its projects without ever appearing there. So a board is asked about itself -
+  YouTrack exposes each board as a field carrying the sprint a card sits in. And
+  what the finding counts is boards, not cards: the same issue can sit on several
+  boards, so cards cannot be added up across them. Each board it names carries the
+  cards of its own board, where they are true.
 - **WIP limits are only asked of boards that plan without sprints.** A sprint board
   limits work through the sprint it commits to, so a missing column limit there is
   not a finding. And a board with nothing in flight has nothing to limit, so it is

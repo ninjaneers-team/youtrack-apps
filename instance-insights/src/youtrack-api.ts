@@ -52,7 +52,7 @@ const FIELDS = {
   // The column field and its values per column are what makes a board's own
   // definition of work-in-progress queryable (`{State}: {In Progress}`).
   agile:
-    'id,name,projects(shortName),sprintsSettings(disableSprints),' +
+    'id,name,projects(shortName),sprintsSettings(disableSprints),sprints(name),' +
     'columnSettings(field(name),columns(presentation,wipLimit(min,max),fieldValues(name)))',
   group: 'id,name,usersCount',
   stateBundle: 'id,name,values(name,isResolved)',
@@ -250,6 +250,7 @@ interface RawAgile {
   name: string;
   projects?: { shortName?: string }[] | null;
   sprintsSettings?: { disableSprints?: boolean } | null;
+  sprints?: { name?: string }[] | null;
   columnSettings?: {
     field?: { name?: string } | null;
     columns?: RawColumn[] | null;
@@ -958,6 +959,9 @@ export class YouTrackApiClient implements YouTrackClient {
       columnField: b.columnSettings?.field?.name ?? '',
       projects: (b.projects ?? [])
         .map(p => p.shortName)
+        .filter((name): name is string => Boolean(name)),
+      sprints: (b.sprints ?? [])
+        .map(s => s.name)
         .filter((name): name is string => Boolean(name)),
       columns: (b.columnSettings?.columns ?? []).map(c => ({
         presentation: c.presentation ?? '',

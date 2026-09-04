@@ -140,6 +140,7 @@ export class CountingClient implements YouTrackClient {
       usesSprints: false,
       columnField: 'State',
       projects: [`P${i % this.shape.projects}`],
+      sprints: ['First sprint'],
       columns: Array.from({ length: this.shape.columnsPerBoard }, (__, c) => ({
         presentation: `Column ${c}`,
         fieldValues: [`Value ${c}`],

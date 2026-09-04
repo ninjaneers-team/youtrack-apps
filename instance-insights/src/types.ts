@@ -433,6 +433,16 @@ export interface AgileBoard {
   columnField: string;
   /** Short names of the projects on the board, for scoping a query to it. */
   projects: string[];
+  /**
+   * Names of the board's sprints, for asking which issues it holds.
+   *
+   * A board is a search field: `Board <name>` carries the sprint an issue sits in.
+   * `has:` answers for every real sprint at once, but a card nobody scheduled sits
+   * in a sprint of its own that `has:` does not count - so the names are needed
+   * beside it. Measured on a live instance: `has:` alone found no card at all on
+   * two boards out of four.
+   */
+  sprints: string[];
   columns: BoardColumn[];
 }
 

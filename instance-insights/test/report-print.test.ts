@@ -67,6 +67,7 @@ test('names that come from the instance cannot become markup', async () => {
         name: '<script>alert("x")</script> & "quoted"',
         usesSprints: false,
         columnField: 'State',
+      sprints: ['First sprint'],
         projects: ['P'],
         columns: [
           { presentation: 'Open', fieldValues: ['Open'] },

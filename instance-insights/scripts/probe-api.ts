@@ -165,7 +165,14 @@ async function main(): Promise<void> {
             'values (aging WIP)',
           async () =>
             `=> ${await client.count(
-              QUERIES.boardWip(sampleBoard.projects, sampleBoard.columnField, sampleValues),
+              QUERIES.boardWip(
+                sampleBoard.name,
+                sampleBoard.usesSprints,
+                sampleBoard.sprints,
+                sampleBoard.projects,
+                sampleBoard.columnField,
+                sampleValues,
+              ),
             )}`,
         )
       : { name: 'query board columns (aging WIP)', ok: false, detail: 'no sample column' },
@@ -174,10 +181,15 @@ async function main(): Promise<void> {
     sampleBoard && sampleValues.length > 0
       ? await probe('query board columns + updated-range (aging WIP)', async () =>
           `=> ${await client.count(
-            QUERIES.boardWipStale(
-              sampleBoard.projects,
-              sampleBoard.columnField,
-              sampleValues,
+            QUERIES.notMovedSince(
+              QUERIES.boardWip(
+                sampleBoard.name,
+                sampleBoard.usesSprints,
+                sampleBoard.sprints,
+                sampleBoard.projects,
+                sampleBoard.columnField,
+                sampleValues,
+              ),
               ISO_OLD,
             ),
           )}`,
