@@ -1,0 +1,108 @@
+/*
+ * A dashboard tile is resized by whoever placed it, and the row it lands in can be
+ * shorter than the content. Scrolling inside the tile keeps the button reachable
+ * instead of cutting it off, whatever height the tile gets.
+ */
+.score-tile {
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --quiet: var(--ring-secondary-color);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  height: 100%;
+  overflow: auto;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--ring-font-family, system-ui, sans-serif);
+  color: var(--ring-text-color);
+  line-height: 1.5;
+}
+
+.score-tile--center {
+  align-items: center;
+  justify-content: center;
+  min-height: 6rem;
+}
+
+/* Score and estimate on one line, so the action below stays inside the tile. */
+.score-tile__figures {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.score-tile__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* The same figure as on the report page, in the size a tile has room for: tight
+   tracking, tabular figures, and the maximum kept quiet beside it. */
+.score-tile__value {
+  font-size: 2rem;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-tile__max {
+  font-size: 1rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--quiet);
+}
+
+.score-tile__offer {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.score-tile__measured {
+  font-weight: 400;
+  color: var(--quiet);
+}
+
+.score-tile__at,
+.score-tile__empty {
+  margin: 0;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--quiet);
+}
+
+.score-tile__error {
+  margin: 0;
+  color: var(--ring-error-color);
+}
+
+/* The message that stands in the widget until the app replaces it. Styled here
+   because a widget that cannot start still has its stylesheet.
+
+   Held back for two seconds: on a normal load the app replaces this node long
+   before that, and a message about failure must not flash past on the way to a
+   working page. */
+.bootstrap {
+  margin: 1.5rem;
+  opacity: 0;
+  animation: bootstrap-visible 1ms linear 2s forwards;
+  color: var(--ring-secondary-color);
+  font-family: var(--ring-font-family, system-ui, sans-serif);
+  font-size: 0.9rem;
+}
+
+@keyframes bootstrap-visible {
+  to {
+    opacity: 1;
+  }
+}

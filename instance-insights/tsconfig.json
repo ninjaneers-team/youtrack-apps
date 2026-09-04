@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    /* Node 22 runs .ts files directly. tsc is only a type checker here, never a
+       compiler - nothing is emitted. */
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "moduleDetection": "force",
+
+    /* The three options that matter for Node's type stripping:
+       - erasableSyntaxOnly rejects syntax Node cannot strip away (enum, namespace,
+         parameter properties, decorators), which turns a convention into a
+         compiler error.
+       - verbatimModuleSyntax requires `import type` for type-only imports.
+       - isolatedModules matches the file-by-file stripping. */
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "skipLibCheck": true
+  },
+  /* The engine half. Browser code (widgets, the dev entry, host-client, app-state)
+     is checked by tsconfig.app.json, which has the DOM lib and JSX; deliberately
+     absent here. */
+  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["src/widgets", "src/dev", "src/host-client.ts", "src/app-state.ts"]
+}

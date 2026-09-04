@@ -1,0 +1,56 @@
+{
+  "name": "instance-insights",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Finds where a YouTrack instance has drifted over time and reports it with a score, read-only.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "check": "npm run typecheck && npm test",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.app.json && tsc -p tsconfig.node.json",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "test:watch": "node --test --watch \"test/**/*.test.ts\"",
+    "probe": "node --env-file=.env scripts/probe-api.ts",
+    "scan": "node --env-file=.env scripts/scan.ts",
+    "dev": "vite",
+    "build": "npm run typecheck && vite build && youtrack-app app validate --directory dist",
+    "lint": "eslint src/widgets src/dev src/host-client.ts src/backend.js '**/*.{json,yml,yaml}' --report-unused-disable-directives --max-warnings 0",
+    "pack": "rm -rf instance-insights.zip && cd dist/ && bestzip ../instance-insights.zip *",
+    "upload": "youtrack-app app upload --directory dist",
+    "deploy": "npm run build && node --env-file=.env scripts/deploy.ts",
+    "export": "node scripts/export-public.ts"
+  },
+  "dependencies": {
+    "@jetbrains/icons": "^5.23.0",
+    "@jetbrains/ring-ui-built": "^7.0.8",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@eslint/compat": "^1.2.1",
+    "@eslint/eslintrc": "^3.1.0",
+    "@eslint/js": "^9.13.0",
+    "@jetbrains/eslint-config": "^6.0.2",
+    "@jetbrains/youtrack-apps-tools": "^1.0.3",
+    "@types/node": "^22.20.1",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "bestzip": "^2.2.1",
+    "eslint": "^9.13.0",
+    "eslint-plugin-jsonc": "^3.4.2",
+    "eslint-plugin-jsx-a11y": "^6.8.0",
+    "eslint-plugin-react": "^7.34.1",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.6",
+    "eslint-plugin-yml": "^3.8.1",
+    "globals": "^15.11.0",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.0.1",
+    "vite": "^6.0.1",
+    "vite-plugin-static-copy": "^2.2.0"
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+*.log
+.DS_Store
+
+# Vite output and the upload package.
+dist/
+instance-insights.zip
+
+# Credentials for the local instance — never commit these.
+.env
+.env.local
+
+# Raw output of the API probes. Can contain logins and project names.
+probe-output/

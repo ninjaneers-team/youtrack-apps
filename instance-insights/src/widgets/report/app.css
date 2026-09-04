@@ -1,0 +1,1111 @@
+.report {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-5) var(--space-6);
+  color: var(--ring-text-color);
+  font-family: var(--ring-font-family, system-ui, sans-serif);
+  line-height: 1.55;
+}
+
+.report__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+/* A sentence, not a name: it says what the page is about, so it carries weight
+   without shouting - YouTrack's own header already names the app above it. */
+.report__title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  max-width: 38rem;
+  margin: 0;
+}
+
+.report__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* One heading style for the whole report, and the same one the printed document
+   uses, so the two do not read as different products. */
+.report h2 {
+  margin: var(--space-6) 0 var(--space-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--quiet);
+}
+
+/* The tokens the whole report is built from.
+ *
+ * A page whose spacing comes from a scale reads as designed, and one whose
+ * spacing is chosen per element reads as assembled - which is what this was.
+ * Colours come from ring-ui, so the report follows the theme of the instance it
+ * runs in; only variables this file already proved to resolve are used, because a
+ * light fallback for a variable that is missing would be wrong in a dark theme.
+ *
+ * Motion: marking a finding moves the score, the bar and every term derived from
+ * them in the same instant. Without a transition that reads as a redrawn page;
+ * with one, the bar simply moves. Short, on state changes only, and never on
+ * anything that shifts the layout around the pointer. */
+.report {
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2.25rem;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --line: var(--ring-line-color);
+  --sunken: var(--ring-sidebar-background-color);
+  --quiet: var(--ring-secondary-color);
+  --accent: var(--ring-main-color);
+  --insights-motion: 140ms;
+  --insights-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* The two places a score becomes a length: they follow the number that changed. */
+.categories__bar-fill,
+.score-bar__part {
+  transition:
+    width var(--insights-motion) var(--insights-ease),
+    x var(--insights-motion) var(--insights-ease);
+}
+
+.finding,
+.finding__item-name,
+.finding__items summary,
+.score__formula summary,
+.jump {
+  transition:
+    color var(--insights-motion) var(--insights-ease),
+    opacity var(--insights-motion) var(--insights-ease),
+    border-color var(--insights-motion) var(--insights-ease);
+}
+
+/* Keyboard users get the same clarity as the pointer: a ring the theme provides. */
+.jump:focus-visible,
+.finding__items summary:focus-visible,
+.score__formula summary:focus-visible {
+  outline: 2px solid var(--ring-main-color);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .report * {
+    transition: none;
+  }
+}
+
+.report__hint,
+.report__error {
+  margin-top: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius);
+  background: var(--ring-selected-background-color);
+}
+
+.report__error {
+  background: var(--ring-error-container-light-color);
+}
+
+.report__loader {
+  margin-top: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-3);
+}
+
+.report__progress {
+  width: 100%;
+}
+
+.report__progress-label {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ring-secondary-color);
+}
+
+/* The way out of the wait sits next to the state of it, on one line. */
+.report__progress-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+/* Findings while the scan is still running: readable, and clearly not the report. */
+/* What the scan has found so far, so a minute of waiting still shows something. */
+.report__early {
+  margin: 0;
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 0.9rem;
+  color: var(--quiet);
+}
+
+.report__note {
+  margin-top: 1.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  background: var(--ring-selected-background-color);
+}
+
+/* Score header ------------------------------------------------------------ */
+
+.score {
+  display: flex;
+  gap: var(--space-6);
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* Score and offer are the two numbers the report exists for, so they are the same
+   size. The formula that produces the first one sits behind a disclosure. */
+.score__figures {
+  display: flex;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.score__formula summary {
+  cursor: pointer;
+  color: var(--ring-link-color);
+  font-size: 0.9rem;
+}
+
+.score__formula p {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ring-secondary-color);
+}
+
+.score__label {
+  margin-bottom: var(--space-1);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--quiet);
+}
+
+/* The number the report exists for. Tight tracking and tabular figures so it
+   reads as one value rather than as three digits. */
+.score__value {
+  font-size: 3rem;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.score__max {
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--quiet);
+  letter-spacing: 0;
+}
+
+/* What the score would be without any decision - directly under the number it
+   differs from, because that is where the question comes up. */
+.score__measured {
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ring-secondary-color);
+}
+
+.score__meta {
+  flex: 1;
+  min-width: 18rem;
+}
+
+/* The decisions behind the score. Marked out rather than mixed into the notes: it
+   answers why a number moved without anyone touching the instance. */
+.score__decisions {
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  border-left: 3px solid var(--ring-icon-secondary-color);
+  background: var(--ring-sidebar-background-color);
+}
+
+.score__note {
+  margin: var(--space-3) 0 0;
+  font-size: 0.85rem;
+  color: var(--quiet);
+}
+
+/* Disclosures ------------------------------------------------------------- */
+
+/* One row style for every openable thing on the page - the score formula, a
+   finding's reasoning, its objects, its arithmetic. Before this each of them was
+   a blue link with the browser's own triangle, and a card looked like a list of
+   links rather than a list of rows. */
+.report details > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  list-style: none;
+  cursor: pointer;
+  color: var(--ring-link-color);
+  font-size: 0.9rem;
+}
+
+.report details > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* A chevron drawn from two borders: no asset, no font, and it turns on open. */
+.report details > summary::before {
+  content: '';
+  flex: none;
+  width: 0.36em;
+  height: 0.36em;
+  margin-left: 0.1em;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--insights-motion) var(--insights-ease);
+}
+
+.report details[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+/* A row that reacts to the pointer says it can be opened, without an extra word.
+   The tint is the theme's own sunken surface, so it works light and dark. */
+.report details > summary:hover {
+  color: var(--ring-link-hover-color);
+}
+
+.finding > details > summary {
+  padding-inline: var(--space-2);
+  margin-inline: calc(var(--space-2) * -1);
+  border-radius: var(--radius-sm);
+  transition: background var(--insights-motion) var(--insights-ease);
+}
+
+.finding > details > summary:hover {
+  background: var(--sunken);
+}
+
+/* Rows of a table follow the same rule. */
+.finding__table tbody tr,
+.categories__table tbody tr {
+  transition: background var(--insights-motion) var(--insights-ease);
+}
+
+.finding__table tbody tr:hover,
+.categories__table tbody tr:hover {
+  background: var(--sunken);
+}
+
+/* The score as one bar ----------------------------------------------------- */
+
+.score-bar {
+  /* Aligned with the numbers to its left rather than with their labels. */
+  margin: var(--space-3) 0 0;
+}
+
+.score-bar__chart {
+  display: block;
+  width: 100%;
+  height: 1.15rem;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.score-bar__part--kept {
+  fill: var(--ring-icon-success-color);
+}
+
+/* Not a colour of its own: the reader's decision sits on top of the kept points,
+   hatched, so a score resting on decisions is visible as such. */
+.score-bar__part--decisions {
+  fill: url(#score-bar-decisions);
+}
+
+.score-bar__hatch-ground {
+  fill: var(--ring-icon-success-color);
+  fill-opacity: 0.35;
+}
+
+.score-bar__hatch-line {
+  stroke: var(--ring-icon-success-color);
+  stroke-width: 1;
+}
+
+.score-bar__part--loss {
+  fill: var(--ring-icon-error-color);
+}
+
+.score-bar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--quiet);
+  font-variant-numeric: tabular-nums;
+}
+
+.score-bar__legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.score-bar__swatch {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--ring-icon-error-color);
+}
+
+.score-bar__swatch--kept {
+  background: var(--ring-icon-success-color);
+}
+
+.score-bar__swatch--decisions {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--ring-icon-success-color) 0 2px,
+    transparent 2px 4px
+  );
+}
+
+/* Trend ------------------------------------------------------------------- */
+
+.trend {
+  margin-top: 2rem;
+}
+
+.trend__body {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.trend__chart-box {
+  flex: none;
+}
+
+/* The numbers of the scale sit beside the line, top and bottom, the way a chart
+   labels an axis. Their column has a fixed width so the dates below line up with
+   the plot rather than with the numbers. */
+.trend__plot {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.trend__scale {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 2.2rem;
+  text-align: right;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ring-secondary-color);
+}
+
+.trend__chart {
+  display: block;
+  overflow: visible;
+}
+
+/* A line without dates is decoration: two scans an hour apart would look like
+   months of progress. */
+.trend__axis {
+  display: flex;
+  justify-content: space-between;
+  /* Aligned with the plot, past the column that carries the scale. */
+  margin: 0.2rem 0 0 2.6rem;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ring-secondary-color);
+}
+
+.trend__moved {
+  margin-top: 1rem;
+}
+
+.trend__moved-title {
+  margin: 0 0 var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--quiet);
+}
+
+.trend__moved-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+}
+
+.trend__moved-item {
+  padding: 0.15rem 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend__moved-kind {
+  display: inline-block;
+  min-width: 5.5rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ring-secondary-color);
+}
+
+.trend__moved-item--better .trend__moved-kind,
+.trend__moved-item--resolved .trend__moved-kind {
+  color: #2f9e44;
+}
+
+.trend__moved-item--worse .trend__moved-kind,
+.trend__moved-item--new .trend__moved-kind {
+  color: #e5484d;
+}
+
+.trend__line {
+  fill: none;
+  stroke: var(--ring-main-color);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.trend__latest {
+  margin: 0 0 0.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend__score {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.trend__delta {
+  margin: 0;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The span of the axis, centred between the two dates. */
+
+/* The measured line: same colour, dashed, thinner - a second reading of the same
+   scans rather than a second subject. */
+.trend__line--measured {
+  stroke-dasharray: 3 3;
+  opacity: 0.55;
+}
+
+.trend__legend {
+  font-size: 0.75rem;
+  color: var(--ring-secondary-color);
+}
+
+/* Directly under the stored score, since it qualifies exactly that number. */
+.trend__measured {
+  margin: 0.1rem 0 0;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ring-secondary-color);
+}
+
+/* "Nothing moved" names which checks it is talking about, one click away. */
+.trend__unchanged {
+  font-size: 0.85rem;
+  color: var(--ring-secondary-color);
+}
+
+.trend__unchanged > summary {
+  cursor: pointer;
+}
+
+.trend__unchanged-list {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+/* Categories -------------------------------------------------------------- */
+
+.categories {
+  margin-top: 2rem;
+}
+
+.categories__intro {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--ring-secondary-color);
+}
+
+/* A header row of labels, not of data: quiet, so the figures below stay the thing
+   the eye lands on. */
+.categories__table thead th {
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--ring-line-color);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ring-secondary-color);
+  text-align: left;
+}
+
+.categories__table thead th.categories__score {
+  text-align: right;
+}
+
+.categories__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.categories__table td,
+.categories__table th {
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--ring-line-color);
+  text-align: left;
+  font-weight: 400;
+}
+
+.categories__table th:first-child,
+.categories__table td:first-child {
+  padding-left: 0;
+}
+
+.categories__name {
+  width: 30%;
+}
+
+/* A number or a name that leads to its section looks like the link it is. */
+.jump {
+  color: var(--ring-link-color);
+  text-decoration: none;
+}
+
+.jump:hover,
+.jump:focus-visible {
+  text-decoration: underline;
+}
+
+/* The score figure stays a figure; only its colour says it leads somewhere. */
+.score__value .jump {
+  font: inherit;
+}
+
+/* A category that lost no points has nothing to jump to. */
+.categories__plain {
+  color: var(--ring-text-color);
+}
+
+.categories__bar-cell {
+  width: 30%;
+}
+
+.categories__bar {
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--ring-line-color);
+  overflow: hidden;
+}
+
+.categories__bar-fill {
+  height: 100%;
+  background: var(--ring-main-color);
+}
+
+.categories__score {
+  width: 6.5rem;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.categories__score-max {
+  margin-left: 0.25rem;
+  font-weight: 400;
+  font-size: 0.85rem;
+  color: var(--ring-secondary-color);
+}
+
+.categories__terms {
+  font-size: 0.85rem;
+  color: var(--ring-secondary-color);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Notices ----------------------------------------------------------------- */
+
+/* YouTrack's own alert, in a report rather than in a corner: it is built for a
+   stack of short notifications and keeps a narrow column, while here it belongs to
+   the page and states a sentence about the whole scan. */
+.report [data-test~='alert'] {
+  /* Ring sets a fixed 360 px width for the corner stack; here the notice belongs
+     to the column it stands in. */
+  width: auto;
+  max-width: none;
+  margin: var(--space-4) 0 0;
+}
+
+/* Findings ---------------------------------------------------------------- */
+
+/* The category a card belongs to stays visible while its cards scroll past: on a
+   page of eleven findings the heading is otherwise long gone by the time a reader
+   is deciding what to do about one of them. */
+.findings__group-title {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: var(--space-5) 0 var(--space-2);
+  padding: var(--space-2) 0;
+  scroll-margin-top: var(--space-4);
+  background: var(--ring-content-background-color);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--quiet);
+}
+
+.findings {
+  margin-top: 2rem;
+}
+
+.findings__group + .findings__group {
+  margin-top: 1.75rem;
+}
+
+/* The heading a jump from the category table lands on. */
+
+
+.finding {
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  padding: var(--space-4) var(--space-4) var(--space-2);
+  margin-bottom: var(--space-3);
+  break-inside: avoid;
+}
+
+/* The rows at the foot of a card, each on its own hairline: a card is content
+   first and a set of choices second, and the line says where one ends. */
+.finding > details {
+  border-top: 1px solid var(--line);
+}
+
+.finding > details > summary {
+  padding: var(--space-2) 0;
+}
+
+.finding--critical { border-left-color: #e5484d; }
+.finding--high     { border-left-color: #f5a623; }
+.finding--medium   { border-left-color: #3b82f6; }
+.finding--low      { border-left-color: #9aa0a6; }
+
+.finding__header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.finding__title {
+  flex: 1;
+}
+
+/* An intentional finding stays readable but visibly steps back. */
+.finding--ignored {
+  border-left-color: var(--ring-line-color);
+  opacity: 0.65;
+}
+
+/* One row per object: the name on the left, the control on the right, so a long list
+   still reads as a list and not as a wall of buttons. */
+
+/* A marked object stays in the table - it is still true of the instance - but it is
+   struck through, because it no longer counts. */
+.finding__item--marked .finding__item-name,
+.finding__item--marked .finding__item-detail {
+  text-decoration: line-through;
+  color: var(--ring-secondary-color);
+}
+
+.finding__item-mark {
+  width: 1px;
+  white-space: nowrap;
+}
+
+/* The reasoning behind a finding, folded away: the summary carries the promise. */
+.finding__context > summary {
+  cursor: pointer;
+  color: var(--ring-link-color);
+  font-size: 0.9rem;
+}
+
+.finding__context > p {
+  margin: 0.4rem 0 0;
+}
+
+/* A finding may name hundreds of objects, and all of them are in the table; it
+   keeps its own height and scrolls instead of pushing the report apart. */
+.finding__items table {
+  display: block;
+  max-height: 22rem;
+  overflow-y: auto;
+  width: 100%;
+  margin-top: 0.4rem;
+  /* Marked as its own surface, so a cut-off row reads as more to come rather than
+     as a list that ends there. */
+  border: 1px solid var(--ring-line-color);
+  border-radius: 3px;
+  background: var(--ring-sidebar-background-color);
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.finding__table td {
+  font-variant-numeric: tabular-nums;
+}
+
+.finding__table th {
+  position: sticky;
+  top: 0;
+  padding: var(--space-1) var(--space-3);
+  background: var(--ring-sidebar-background-color);
+  border-bottom: 1px solid var(--ring-line-color);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ring-secondary-color);
+  text-align: left;
+}
+
+.finding__table td {
+  padding: var(--space-1) var(--space-3);
+  vertical-align: baseline;
+}
+
+.finding__item-detail {
+  color: var(--ring-secondary-color);
+}
+
+/* The issues behind a counted number: the same row, in the same place, as the
+   objects of a finding that lists them. */
+.finding__found > summary {
+  cursor: pointer;
+  color: var(--ring-link-color);
+  font-size: 0.9rem;
+}
+
+.finding__found p {
+  margin: 0.3rem 0 0;
+}
+
+.finding__search code {
+  font-size: 0.85rem;
+  color: var(--ring-secondary-color);
+}
+
+/* The same statement as the glyph beside a single link, made once for a whole
+   column of them. */
+.finding__table-hint {
+  margin-left: var(--space-2);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--quiet);
+}
+
+/* The glyph that says a link opens a tab of its own: beside the words, in their
+   colour, a shade smaller than the text. */
+.jump__new-window {
+  margin-left: var(--space-1);
+  vertical-align: -0.1em;
+  color: currentColor;
+}
+
+/* The way to the issues behind a counted number. */
+.finding__query {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
+
+.finding__query code {
+  font-family: var(--ring-font-family-monospace, monospace);
+  font-size: 0.85rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  background: var(--ring-selected-background-color);
+}
+
+.findings__note {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: var(--ring-secondary-color);
+}
+
+.finding__severity {
+  flex-shrink: 0;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--ring-line-color);
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ring-secondary-color);
+}
+
+.finding__title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.finding__headline {
+  margin: 0.5rem 0;
+  font-weight: 600;
+}
+
+.finding__why {
+  margin: 0.5rem 0;
+}
+
+.finding__evidence {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+  color: var(--ring-secondary-color);
+}
+
+.finding__legit {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  color: var(--ring-secondary-color);
+}
+
+/* The reasoning of a check, one click away from the finding itself. */
+.finding__context {
+  margin: 0.6rem 0 0;
+}
+
+/* The score arithmetic as rows: label left, value right, so a reader can check one
+   number without reading three sentences. */
+.terms {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.15rem 0.75rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+}
+
+.terms dt {
+  color: var(--ring-secondary-color);
+}
+
+.terms dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The severity legend: each band wears the colour its cards wear, so the legend and
+   the findings are visibly the same system. */
+.severity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  margin: 0 0 0.4rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+}
+
+.severity__band {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding-left: 0.45rem;
+  border-left: 3px solid var(--ring-line-color);
+}
+
+.severity__band--critical { border-left-color: #e5484d; }
+.severity__band--high     { border-left-color: #f5a623; }
+.severity__band--medium   { border-left-color: #3b82f6; }
+.severity__band--low      { border-left-color: #9aa0a6; }
+
+.severity__label {
+  font-weight: 600;
+}
+
+.severity__from,
+.severity__aside {
+  color: var(--ring-secondary-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.severity__aside {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+/* A sample of the line it labels, so the legend needs no sentence. */
+.trend__sample {
+  width: 24px;
+  height: 4px;
+  overflow: visible;
+}
+
+.trend__legend {
+  display: flex;
+  gap: 1rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trend__legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Said where the list of objects would be, in the voice of the surrounding notes. */
+.finding__unnamed {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  color: var(--ring-secondary-color);
+}
+
+.finding__legit-label {
+  font-weight: 600;
+}
+
+.finding__effort {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+}
+
+.finding__items,
+.finding__terms {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.finding__items summary,
+.finding__terms summary {
+  cursor: pointer;
+  color: var(--ring-link-color);
+}
+
+.finding__terms ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ring-secondary-color);
+}
+
+/* Checks without a measurement --------------------------------------------- */
+
+.not-run {
+  margin-top: 2rem;
+}
+
+.not-run__note {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  color: var(--ring-secondary-color);
+}
+
+.not-run__list {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+}
+
+/* Attribution ------------------------------------------------------------- */
+
+.report__attribution {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--ring-line-color);
+  font-size: 0.9rem;
+  color: var(--ring-secondary-color);
+}
+
+/* Print ------------------------------------------------------------------- */
+
+/* The widget iframe is sandboxed without allow-modals, so the app cannot open a
+   print dialog itself. These rules apply when the browser prints the page. */
+@media print {
+  .report__actions,
+  .report__hint,
+  .finding__ignore {
+    display: none;
+  }
+
+  .report {
+    max-width: none;
+    padding: 0;
+  }
+
+  .finding {
+    border-left-width: 4px;
+  }
+}
+
+/* The message that stands in the widget until the app replaces it. Styled here
+   because a widget that cannot start still has its stylesheet.
+
+   Held back for two seconds: on a normal load the app replaces this node long
+   before that, and a message about failure must not flash past on the way to a
+   working page. */
+.bootstrap {
+  margin: 1.5rem;
+  opacity: 0;
+  animation: bootstrap-visible 1ms linear 2s forwards;
+  color: var(--ring-secondary-color);
+  font-family: var(--ring-font-family, system-ui, sans-serif);
+  font-size: 0.9rem;
+}
+
+@keyframes bootstrap-visible {
+  to {
+    opacity: 1;
+  }
+}
