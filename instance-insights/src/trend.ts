@@ -8,7 +8,7 @@
  * the result.
  */
 
-import { percent, plural } from './types.ts';
+import { plural } from './types.ts';
 
 /**
  * What one check contributed to a scan.
@@ -103,6 +103,9 @@ export interface Trend {
 
 const DAY_MS = 86_400_000;
 
+/** One percentage point of what a check measured: less is not a movement. */
+const MOVED_AT_LEAST = 0.01;
+
 /**
  * Turns stored history (newest first) into a trend.
  *
@@ -181,12 +184,17 @@ function ran(entry: CheckAggregate | undefined): boolean {
 /**
  * What happened to one check between two scans.
  *
- * Compared at the precision a report states a share with, not at the precision the
- * ratio carries. One issue out of thirteen hundred moves the fourth decimal, and a
- * line reading "worse - 80 % -> 80 %" claims a change while showing none: the
- * reader is left looking for the difference rather than at the finding. Appearing
- * and disappearing are judged on the measurement itself - a check that starts to
- * find something is news at any share.
+ * A whole percentage point, which is what the section says of the checks it leaves
+ * out: "all 20 checks came back within a percentage point of before". Comparing the
+ * rounded percentages instead only caught a movement of nothing at all - a line
+ * reading "worse - 80 % -> 80 %" - and let a rounding boundary through as news: on
+ * an instance with 2688 open issues one issue moves the share by four hundredths of
+ * a point, and "improved - 81 % -> 80 %" for that is a trend nobody can trust. It
+ * also read as a contradiction of the score beside it, which says "unchanged"
+ * because four hundredths of a point of one check is a thousandth of the hundred.
+ *
+ * Appearing and disappearing are judged on the measurement itself - a check that
+ * starts to find something, or stops, is news at any share.
  *
  * A check that measured something before and nothing now is the one case that is
  * not a movement at all. Counted as a resolution, the report announced work nobody
@@ -209,7 +217,7 @@ function changeKind(before: number | null, after: number | null): CheckChange['k
   if (from > 0 && to === 0) {
     return 'resolved';
   }
-  if (percent(from) === percent(to)) {
+  if (Math.abs(to - from) < MOVED_AT_LEAST) {
     return 'unchanged';
   }
   return to < from ? 'better' : 'worse';

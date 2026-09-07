@@ -5,7 +5,6 @@ import { runScan, runChecks, score } from '../src/engine.ts';
 import {
   CheckSkipped,
   ScanCancelled,
-  ratioAboveThreshold,
   type Category,
   type CheckDefinition,
   type Finding,
@@ -168,12 +167,6 @@ test('ratio is clamped into 0..1 so the score stays bounded', async () => {
 
   const low = await runScan([stub('a', async () => finding('a', -0.3), { weight: 10 })], ctx());
   assert.equal(low.overallScore, 100);
-});
-
-test('ratioAboveThreshold is zero at the threshold and one at full', () => {
-  assert.equal(ratioAboveThreshold(0.2, 0.2), 0);
-  assert.equal(ratioAboveThreshold(1, 0.2), 1);
-  assert.ok(ratioAboveThreshold(0.3, 0.2) > 0 && ratioAboveThreshold(0.3, 0.2) < 0.2);
 });
 
 test('an ignored finding keeps its weight in the denominator but stops deducting', async () => {

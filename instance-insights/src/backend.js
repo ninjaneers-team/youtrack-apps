@@ -633,6 +633,10 @@ function runItem(entry) {
   const item = {id: String(fields.id), label: String(fields.label)};
   copyText(item, 'target', fields.target);
   copyText(item, 'detail', fields.detail);
+  /* The search behind the row's own number, where that number counts issues. Made
+     of project keys and a field name - the identifiers of configuration, the same
+     as everything else kept here - and never anything a person wrote. */
+  copyText(item, 'query', fields.query);
   /* Kept because the score depends on them: without these two numbers a marked
      board comes back from storage weighing the same as any other, and the score
      of the restored run would not be the score that was shown. */

@@ -8,6 +8,14 @@
 
 import type {Category} from '../../types.ts';
 
+/** Anchor of the section listing the checks that came back without a number. */
+export const NOT_RUN_ANCHOR = 'not-measured';
+
+/** Anchor of one category's checks inside that section. */
+export function notRunAnchor(category: Category): string {
+  return `not-measured-${category}`;
+}
+
 /** Anchor of the findings section as a whole. */
 export const FINDINGS_ANCHOR = 'findings';
 

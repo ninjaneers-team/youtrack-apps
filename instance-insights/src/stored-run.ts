@@ -158,6 +158,7 @@ function storedFinding(finding: Finding, namesPeople: boolean): StoredFinding {
       ...(item.detail === undefined ? {} : { detail: item.detail }),
       /* The weight a marked object carries. Left out, the restored run would score
          a marked board as one board out of a list instead of the cards on it. */
+      ...(item.query === undefined ? {} : { query: item.query }),
       ...(item.affected === undefined ? {} : { affected: item.affected }),
       ...(item.measured === undefined ? {} : { measured: item.measured }),
     }));

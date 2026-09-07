@@ -31,7 +31,6 @@ import {
   CheckSkipped,
   countedProjects,
   plural,
-  ratioAboveThreshold,
   requireCounts,
   severityFromRatio,
   share,
@@ -69,6 +68,16 @@ export const QUERIES = {
    */
   fieldFilledIn: (field: string, projects: readonly string[]): string =>
     `project: ${projects.map((shortName) => `{${shortName}}`).join(', ')} and has: {${field}}`,
+  /**
+   * Issues in the given projects that carry no value for the field.
+   *
+   * The negation sits on the field name, not in front of `has:`: `-has: {Field}` is
+   * a 400, and `{Field}: {No Field}` is one too for a user field. Confirmed against
+   * an instance with a real gap - a project of 23 issues where 4 carried the field
+   * answered 19.
+   */
+  fieldEmptyIn: (field: string, projects: readonly string[]): string =>
+    `project: ${projects.map((shortName) => `{${shortName}}`).join(', ')} and has: -{${field}}`,
   /** Issues that entered the instance in a window, by their creation date. */
   createdBetween: (from: string, to: string): string => `created: ${from} .. ${to}`,
   /**
@@ -402,7 +411,12 @@ const emptyField: CheckDefinition = checkOf({
        computed when the scan stops waiting for it. Either way the field stays out
        of both sides of the ratio, and the number of them is part of the evidence,
        so the report never presents an unmeasured field as measured. */
-    const empties: Array<{ id: string; name: string; share: number; projects: number }> = [];
+    const empties: Array<{
+      id: string;
+      name: string;
+      share: number;
+      projects: readonly string[];
+    }> = [];
     let measured = 0;
     let unreachable = 0;
     const filledCounts = await ctx.client.countMany(
@@ -424,7 +438,7 @@ const emptyField: CheckDefinition = checkOf({
           id: field.id,
           name: field.name,
           share: empty,
-          projects: shortNames.length,
+          projects: shortNames,
         });
       }
     }
@@ -438,7 +452,11 @@ const emptyField: CheckDefinition = checkOf({
     const ratio = share(empties.length, measured);
     return {
       itemKind: 'field',
-      headline: `${empties.length} of ${plural(measured, 'field')} ${agree(empties.length, 'is', 'are')} empty in more than ${pct(ctx.config.emptyFieldThreshold)} of the issues that could carry ${agree(empties.length, 'it', 'them')}.`,
+      /* Names the population, because it is not every field: only the ones a
+         project actually uses can be measured at all, and a second card in the same
+         report counts all of them. Two cards saying "of 29 fields" and "of 46
+         custom fields" leave the reader to guess which is which. */
+      headline: `${empties.length} of ${plural(measured, 'field a project uses', 'fields a project uses')} ${agree(empties.length, 'is', 'are')} empty in more than ${pct(ctx.config.emptyFieldThreshold)} of the issues that could carry ${agree(empties.length, 'it', 'them')}.`,
       ratio,
       total: measured,
       evidence: [
@@ -447,10 +465,12 @@ const emptyField: CheckDefinition = checkOf({
           ? [{ label: 'Fields the instance did not answer for', value: unreachable }]
           : []),
       ],
-      items: toItems(empties, ({ id, name, share: emptyShare, projects: count }) => ({
+      items: toItems(empties, ({ id, name, share: emptyShare, projects: where }) => ({
         id,
         label: name,
-        detail: `${pct(emptyShare)} empty across ${plural(count, 'project')}`,
+        detail: `${pct(emptyShare)} empty across ${plural(where.length, 'project')}`,
+        // The row names a field and counts issues, so the number leads to them.
+        query: QUERIES.fieldEmptyIn(name, where),
       })),
     };
   },
@@ -662,8 +682,13 @@ const requiredButEmpty: CheckDefinition = checkOf({
     const filledCounts = await ctx.client.countMany(
       candidates.map(({ field, where }) => QUERIES.fieldFilledIn(field.name, where)),
     );
-    const gaps: Array<{ id: string; name: string; gap: number; issues: number; projects: number }> =
-      [];
+    const gaps: Array<{
+      id: string;
+      name: string;
+      gap: number;
+      issues: number;
+      where: readonly string[];
+    }> = [];
     let requiredValues = 0;
     let unreachable = 0;
     for (const [index, { field, where, issues }] of candidates.entries()) {
@@ -677,7 +702,7 @@ const requiredButEmpty: CheckDefinition = checkOf({
       // come out negative when issues moved in between. That is not a gap.
       const gap = Math.max(0, issues - result.count);
       if (gap > 0) {
-        gaps.push({ id: field.id, name: field.name, gap, issues, projects: where.length });
+        gaps.push({ id: field.id, name: field.name, gap, issues, where });
       }
     }
     if (requiredValues === 0) {
@@ -706,7 +731,11 @@ const requiredButEmpty: CheckDefinition = checkOf({
       items: toItems(gaps, (entry) => ({
         id: entry.id,
         label: entry.name,
-        detail: `${entry.gap} of ${plural(entry.issues, 'issue')} in ${plural(entry.projects, 'project')}`,
+        detail: `${entry.gap} of ${plural(entry.issues, 'issue')} in ${plural(entry.where.length, 'project')}`,
+        /* The row names a field and counts issues. Without this the only way out of
+           it was the page that lists every field, which cannot answer "which of
+           those twelve thousand issues". */
+        query: QUERIES.fieldEmptyIn(entry.name, entry.where),
         affected: entry.gap,
         measured: entry.issues,
       })),
@@ -826,10 +855,15 @@ const unassignedUnresolved: CheckDefinition = checkOf({
     if (total === 0) throw new CheckSkipped('The instance has no open issues.');
 
     const unassigned = await ctx.client.count(QUERIES.unassignedUnresolved());
-    const unassignedShare = share(unassigned, total);
-    if (unassignedShare <= ctx.config.unassignedThreshold) return null;
+    const ratio = share(unassigned, total);
+    /* The threshold decides whether this is worth reporting, not what the share is.
+       A moderate number of unassigned issues is a pull model rather than a problem,
+       so below it the check says nothing - and above it it says the share it
+       measured, like every other check. Scaling the distance above the threshold
+       into the ratio put a second number on the page that the headline's own two
+       could not produce: 2247 of 2688 is 84 %, and the trend said 79 %. */
+    if (ratio <= ctx.config.unassignedThreshold) return null;
 
-    const ratio = ratioAboveThreshold(unassignedShare, ctx.config.unassignedThreshold);
     return {
       // A number without a handle is nothing to work from: with the query, the
       // report leads into the list of issues it counted.
@@ -975,21 +1009,23 @@ const boardsWithoutWipLimits: CheckDefinition = checkOf({
       headline: `${without.length} of ${plural(carrying.length, 'board')} in use ${agree(without.length, 'has', 'have')} no limit on any column.`,
       ratio,
       total: carrying.length,
-      evidence: [
-        {
-          label: 'Cards on those boards',
-          value: without.reduce((sum, b) => sum + b.cards, 0),
-        },
-        /* Only when there is one: a line about no such board reads as a limit that
-           is not there. */
-        ...(unanswered > 0
-          ? [{ label: 'Boards the instance would not count', value: unanswered }]
-          : []),
-      ],
+      /* Only the boards nothing could be measured about, and only when there are
+         any. The cards were in here too, as one sum over the boards in the list -
+         which was the same measurement the rows already carry, in a unit the
+         headline does not use: the share is boards of boards, and a board holds
+         every card it ever held, finished ones included. Under a heading about work
+         in progress that sum read as work in progress. */
+      evidence:
+        unanswered > 0
+          ? [{ label: 'Boards the instance did not answer for', value: unanswered }]
+          : [],
       items: toItems(without, ({ reach, cards }) => ({
         id: reach.board.id,
         label: reach.board.name,
-        detail: `${plural(cards, 'card')}${reachNote(reach.left)}`,
+        /* Says what the number is: how big the board is, which is what makes one
+           missing limit worth more attention than another. Bare, it read as a count
+           of cards in progress. */
+        detail: `${plural(cards, 'card')} on the board${reachNote(reach.left)}`,
       })),
     };
   },
@@ -1035,7 +1071,9 @@ const overgrownBoards: CheckDefinition = checkOf({
     const ratio = share(overgrown.length, boards.length);
     return {
       itemKind: 'board',
-      headline: `${overgrown.length} of ${plural(boards.length, 'board')} ${agree(overgrown.length, 'has', 'have')} more than ${ctx.config.maxBoardColumns} columns.`,
+      /* Which boards, because a board whose every project is archived is out of
+         this count while another card in the same report counts all of them. */
+      headline: `${overgrown.length} of ${plural(boards.length, 'board on a project that still takes work', 'boards on a project that still takes work')} ${agree(overgrown.length, 'has', 'have')} more than ${ctx.config.maxBoardColumns} columns.`,
       ratio,
       total: boards.length,
       items: toItems(overgrown, (b) => ({

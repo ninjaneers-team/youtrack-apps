@@ -212,6 +212,29 @@ test('a check that improved, appeared or was resolved is named as such', () => {
   assert.equal(byId.get('process.intake-vs-throughput')?.kind, 'new');
 });
 
+test('one issue of a few thousand is not a movement', () => {
+  /* The section says of the checks it leaves out that they "came back within a
+     percentage point of before", and this is that rule. It used to compare the
+     rounded percentages, so a share of 80.50 % against 80.49 % was reported as an
+     improvement - which on an instance with 2688 open issues is one issue changing
+     hands, and read as a contradiction of the score beside it saying "unchanged". */
+  const history = [
+    scanOf('2026-08-11T00:00:00.000Z', 60, [['process.stale-unresolved', 0.8049]]),
+    scanOf('2026-08-01T00:00:00.000Z', 60, [['process.stale-unresolved', 0.8050]]),
+  ];
+
+  const comparison = compareScans(history);
+  assert.deepEqual(comparison.moved, []);
+  assert.equal(comparison.unchanged.length, 1);
+
+  // A full point is, and it keeps its direction.
+  const real = compareScans([
+    scanOf('2026-08-11T00:00:00.000Z', 60, [['process.stale-unresolved', 0.79]]),
+    scanOf('2026-08-01T00:00:00.000Z', 60, [['process.stale-unresolved', 0.8]]),
+  ]);
+  assert.equal(real.moved[0]?.kind, 'better');
+});
+
 test('a check that stayed the same is not reported as movement', () => {
   const history = [
     scanOf('2026-08-11T00:00:00.000Z', 60, [['fields.empty-field', 0.4]]),

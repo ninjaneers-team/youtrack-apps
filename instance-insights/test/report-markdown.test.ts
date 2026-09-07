@@ -354,7 +354,14 @@ test('checks that came back for one reason are named on one line', async () => {
      something go back to what they are worth without it - which is why a score on
      an instance run for you and one on your own server are not the same figure. */
   const table = md.slice(md.indexOf('| Area |'), md.indexOf('## Findings'));
-  assert.match(table, /\| Instance setup \| - \| nothing measured here \|/);
+  /* And the row says how many of its checks came back without a number, so the
+     dash beside it is not the only thing a reader has to go on: "-" and "nothing
+     measured here" said that it was not measured, never why. */
+  assert.match(table, /\| Instance setup \(3 checks without a measurement\) \| - \| - \|/);
+  /* And the section names the category over them, so the row above leads somewhere
+     with the reader's own category on it - the same shape the findings have. */
+  const section = md.slice(md.indexOf('## Checks without a measurement'));
+  assert.match(section, /^### Instance setup$/m);
   assert.match(table, /\| Licences \| \d+\.\d \/ 30\.0 \|/);
 });
 

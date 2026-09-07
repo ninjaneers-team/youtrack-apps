@@ -69,18 +69,6 @@ export function share(part: number, whole: number): number {
   return Math.min(1, Math.max(0, part / whole));
 }
 
-/**
- * Continuous ratio for a "share over a threshold" check. Zero at the threshold,
- * one at 100 %, so a check that barely trips returns a small ratio instead of
- * jumping to 1: a binary ratio would make the score jump, which makes it worthless.
- * `value` and `threshold` are both shares in 0..1.
- */
-export function ratioAboveThreshold(value: number, threshold: number): number {
-  if (threshold >= 1) return value >= 1 ? 1 : 0;
-  const scaled = (value - threshold) / (1 - threshold);
-  return Math.min(1, Math.max(0, scaled));
-}
-
 export const CATEGORY_WEIGHT: Record<Category, number> = {
   licensing: 3,
   fields: 2,
@@ -174,6 +162,16 @@ export interface FindingItem {
    */
   affected?: number;
   measured?: number;
+  /**
+   * The search behind this row's own number, where that number counts issues.
+   *
+   * Some rows name one thing and count another: a field is named, and what is
+   * measured about it is how many issues have no value for it. The row then leads
+   * nowhere useful - a field has no address of its own, and the page that lists
+   * fields does not answer "which issue". With the search, the number itself is the
+   * way to the issues it counts.
+   */
+  query?: string;
 }
 
 export interface Finding {

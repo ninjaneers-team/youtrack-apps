@@ -835,6 +835,21 @@
   background: var(--ring-selected-background-color);
 }
 
+/* The one link a card carries where its rows have no address of their own, and the
+   sentence saying why there is one and not fifteen. */
+.finding__page {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
+
+.finding__page-note {
+  color: var(--ring-secondary-color);
+}
+
 .findings__note {
   margin: 0 0 1rem;
   font-size: 0.9rem;
@@ -1009,6 +1024,19 @@
   margin: 0 0 0.5rem;
   font-size: 0.9rem;
   color: var(--ring-secondary-color);
+}
+
+/* The same heading as a group of findings, because this section is grouped the same
+   way and the table of points leads into both. Not sticky: these are a handful of
+   lines, and a heading that follows the reader down a short list is fuss. */
+.not-run__group-title {
+  margin: var(--space-4) 0 var(--space-2);
+  scroll-margin-top: var(--space-4);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--quiet);
 }
 
 .not-run__list {

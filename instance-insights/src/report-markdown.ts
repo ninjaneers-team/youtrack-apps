@@ -31,10 +31,14 @@ import {
   MOVEMENT_LABEL,
   andList,
   byImpact,
+  categoryTableLabel,
+  itemKindPage,
+  ONE_PAGE_LINK,
+  ONE_PAGE_NOTE,
   MARKED_SECTION_NOTE,
   NO_FINDINGS_NOTE,
   nothingMovedNote,
-  noMeasurementGroups,
+  noMeasurementByCategory,
   shareText,
   NO_MEASUREMENT_HEADING,
   NO_MEASUREMENT_NOTE,
@@ -177,7 +181,7 @@ export function reportToMarkdown({
   );
   for (const category of result.categories) {
     lines.push(
-      `| ${CATEGORY_LABEL[category.category]} | ${categoryCell(result, category)} | ` +
+      `| ${categoryTableLabel(result, category.category)} | ${categoryCell(result, category)} | ` +
         `${categoryLoss(result, category)} |`,
     );
   }
@@ -234,11 +238,15 @@ export function reportToMarkdown({
   if (notRun.length > 0) {
     lines.push('', `## ${NO_MEASUREMENT_HEADING}`, '');
     lines.push(NO_MEASUREMENT_NOTE);
-    lines.push('');
-    // The reason is what makes a moved score explainable to a reader who only has
-    // the file, and checks that share one reason share one line.
-    for (const group of noMeasurementGroups(result.outcomes, idToTitle)) {
-      lines.push(`- ${andList(group.titles)} - ${group.phrase}`);
+    /* By category, like the findings above: the table of points names the
+       categories that could not be scored, and this is where they are. The reason
+       is what makes a moved score explainable to a reader who only has the file,
+       and checks that share one reason share one line. */
+    for (const {category, groups} of noMeasurementByCategory(result.outcomes, idToTitle)) {
+      lines.push('', `### ${CATEGORY_LABEL[category]}`, '');
+      for (const group of groups) {
+        lines.push(`- ${andList(group.titles)} - ${group.phrase}`);
+      }
     }
   }
 
@@ -268,7 +276,10 @@ function categoryCell(result: ScanResult, category: CategoryScore): string {
 function categoryLoss(result: ScanResult, category: CategoryScore): string {
   const points = categoryPoints(result, category.category);
   if (points === null) {
-    return 'nothing measured here';
+    /* A dash, like the figure beside it: the name of the row says how many of its
+       checks came back without a number, and saying it again here made one
+       statement read as two. */
+    return '-';
   }
   // The column header says "Points lost", so the cell is the figure alone.
   return points.lost === 0 ? 'nothing' : scoreText(points.lost);
@@ -362,9 +373,17 @@ function findingSection(
       );
       lines.push('');
       for (const item of items.slice(0, ITEMS_SHOWN)) {
-        const text = item.detail ? `${item.label} - ${item.detail}` : item.label;
+        /* The number is the link where the row counts issues: a field has no
+           address of its own, and what a reader wants from "1 of 12494 issues" is
+           those issues. */
+        const search = item.query === undefined ? null : issueSearchUrl(origin, item.query);
+        const detail =
+          item.detail === undefined
+            ? ''
+            : ` - ${search === null ? item.detail : `[${item.detail}](${search})`}`;
         const href = itemUrl(origin, finding.itemKind, item, finding.checkId);
-        const named = href === null ? text : `[${text}](${href})`;
+        const named =
+          href === null ? `${item.label}${detail}` : `[${item.label}](${href})${detail}`;
         /* Named like the others, because it is still true of the instance, and
            marked, because the score above does not count it. */
         lines.push(
@@ -374,6 +393,12 @@ function findingSection(
       // The count above is the real one, so a cut list has to say it is cut.
       if (items.length > ITEMS_SHOWN) {
         lines.push(`- ... and ${items.length - ITEMS_SHOWN} more`);
+      }
+      /* One link where the rows have no address of their own, with the reason: a
+         list of names each linking to the same page promises places it has not. */
+      const page = itemKindPage(origin, finding.itemKind);
+      if (page !== null) {
+        lines.push('', `[${ONE_PAGE_LINK}](${page}). ${ONE_PAGE_NOTE}`);
       }
     }
   }

@@ -77,6 +77,83 @@ test('a row that names a list of values stays readable', async () => {
   }
 });
 
+test('a headline saying "X of Y" carries exactly that share', async () => {
+  const result = await runScan(CHECKS, contextOn(syntheticInstance(NOW)));
+
+  /*
+   * The report promises that every step from a measurement to a point is on the
+   * page, so a reader can divide the two numbers in the sentence and arrive at the
+   * share the score is built on. One check broke that: it reported the distance of
+   * its share above a threshold instead of the share, and on a live instance the
+   * finding read "2247 of 2688 open issues have no assignee" - 84 % - while the
+   * trend beside it said 79 % affected. Nothing on the page could produce 79.
+   */
+  const exempt = [
+    'instance.address-only-works-here',
+    'instance.memory-below-database',
+    'instance.no-way-to-notify',
+    'process.intake-vs-throughput',
+  ];
+  const stated: string[] = [];
+  for (const finding of result.findings) {
+    const said = /^(\d+) of (\d+)\b/.exec(finding.headline);
+    if (said === null) {
+      continue;
+    }
+    stated.push(finding.checkId);
+    const part = Number(said[1]);
+    const whole = Number(said[2]);
+    assert.equal(
+      finding.ratio,
+      part / whole,
+      `${finding.checkId}: "${finding.headline}" states ${part}/${whole}, ` +
+        `the ratio is ${finding.ratio}`,
+    );
+  }
+  /* Which checks phrase their measurement some other way, pinned so that a new one
+     is a decision rather than an omission. Each of these states a fact about the
+     instance itself, or two numbers that are not a part and a whole. */
+  const other = result.findings
+    .map((finding) => finding.checkId)
+    .filter((id) => !stated.includes(id))
+    .sort();
+  assert.deepEqual(other, exempt);
+});
+
+test('a row that counts issues carries the search that finds them', async () => {
+  const result = await runScan(CHECKS, contextOn(syntheticInstance(NOW)));
+
+  /* A field has no address of its own in YouTrack, so a row naming one used to lead
+     to the page that lists all of them - which cannot answer "which of those twelve
+     thousand issues". The negation sits on the field name: `-has: {Field}` is a 400
+     and so is `{Field}: {No Field}` for a user field, while `has: -{Field}` answered
+     19 on a project of 23 issues where 4 carried the field. */
+  for (const id of ['fields.empty-field', 'fields.required-but-empty']) {
+    const finding = result.findings.find(f => f.checkId === id);
+    assert.ok(finding, id);
+    for (const item of finding.items ?? []) {
+      assert.match(
+        item.query ?? '',
+        /^project: \{[^}]+\}(, \{[^}]+\})* and has: -\{[^}]+\}$/,
+        `${id}: ${item.query}`,
+      );
+      assert.ok(item.detail, `${id}: the number the search belongs to`);
+    }
+  }
+
+  /* And never on a check whose objects are people: a search for one account's work
+     names its login, and a login is the one thing that must not reach storage. */
+  const namesPeople = new Set(CHECKS.filter(c => c.itemsNamePeople).map(c => c.id));
+  for (const finding of result.findings) {
+    if (!namesPeople.has(finding.checkId)) {
+      continue;
+    }
+    for (const item of finding.items ?? []) {
+      assert.equal(item.query, undefined, `${finding.checkId} would store a login`);
+    }
+  }
+});
+
 test('no check states a duration, only what the work involves', () => {
   for (const check of CHECKS) {
     assert.ok(
@@ -233,7 +310,10 @@ test('a board that spans an archived project says so where it is named', async (
   /* One number and what stayed out of it. The two numbers this used to carry were
      the share of a board's cards that had stopped moving - a measurement this app
      turned out not to be able to make. */
-  assert.equal(finding?.items?.[0]?.detail, '8 cards, 1 archived project left out');
+  assert.equal(
+    finding?.items?.[0]?.detail,
+    '8 cards on the board, 1 archived project left out',
+  );
 
   // The query names the active project only: search answers a 400 for an archived
   // one, which would take the board - and this check - down with it.
@@ -601,10 +681,11 @@ test('a sprint board is not judged by column limits', async () => {
   assert.deepEqual((wip?.items ?? []).map((i) => i.label), ['Team WEB']);
   assert.equal(wip?.ratio, 1 / 2);
   assert.match(wip?.headline ?? '', /of 2 boards in use has no limit on any column/);
-  assert.equal(
-    wip?.evidence.find((e) => e.label === 'Cards on those boards')?.value,
-    20,
-  );
+  assert.equal(wip?.items?.[0]?.detail, '20 cards on the board');
+  /* Nothing else. The sum of those cards was in here as evidence, which was the
+     rows' own measurement in a unit the headline does not use - and under a heading
+     about work in progress it read as work in progress. */
+  assert.deepEqual(wip?.evidence, []);
 });
 
 test('a board with nothing in flight needs no limit on it', async () => {

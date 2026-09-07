@@ -733,16 +733,18 @@ export function itemUrl(
     }
     case 'board':
       return `${origin}/agiles/${encodePart(item.target ?? item.id)}`;
-    case 'field':
-    // A group of fields is compared and renamed on the same page as a single one.
-    case 'field-group':
-      return `${origin}${FIELDS_PAGE}`;
     case 'group':
       return `${origin}/admin/groups/${encodePart(item.target ?? item.id)}`;
-    // A list of values is administered on the same page as the field that offers
-    // it, and the row names that field.
+    /* A field, a group of fields and a list of values have no address of their own:
+       YouTrack keeps the selected field out of the URL, and its own documentation
+       says to "select the custom field in the list". Every one of these rows led to
+       the same unfiltered page, which is a link that promises a place and delivers
+       a list - so the card carries one link to that page instead, see
+       `itemKindPage`. */
+    case 'field':
+    case 'field-group':
     case 'value-list':
-      return `${origin}${FIELDS_PAGE}`;
+      return null;
     case 'account':
       /* An account is named in the app and counted in an export, and neither links
          to a person. */
@@ -751,6 +753,36 @@ export function itemUrl(
       return null;
   }
 }
+
+/**
+ * The one page a kind of object is administered on, where its rows have no address.
+ *
+ * Fifteen rows that all lead to the same unfiltered list read as fifteen ways to
+ * fifteen places. One link to that page tells the truth, and the absence it stands
+ * for - that a single field cannot be addressed - is said in words beside it,
+ * because no link can say what is missing.
+ */
+export function itemKindPage(origin: string | null, kind: ItemKind | undefined): string | null {
+  if (origin === null || kind === undefined) {
+    return null;
+  }
+  switch (kind) {
+    case 'field':
+    case 'field-group':
+    case 'value-list':
+      return `${origin}${FIELDS_PAGE}`;
+    default:
+      return null;
+  }
+}
+
+/** Why there is one link and not one per row. Said once, where the link is. */
+export const ONE_PAGE_NOTE =
+  'A single field has no address of its own in YouTrack, so this is the page that ' +
+  'holds all of them.';
+
+/** What that one link offers, in the words of what the reader gains. */
+export const ONE_PAGE_LINK = 'Open the list of fields';
 
 // --- Selection --------------------------------------------------------------
 
@@ -762,6 +794,35 @@ function impact(finding: Finding): number {
 /** Findings strongest first, the order every report shows them in. */
 export function byImpact(findings: readonly Finding[]): Finding[] {
   return [...findings].sort((a, b) => impact(b) - impact(a));
+}
+
+/**
+ * What a category is called in the table, and why its row is empty when it is.
+ *
+ * A row reading "-" and "nothing measured here" says that the category was not
+ * measured but not why, and the reason is a sentence: too long for a cell, and
+ * already written out under the checks without a measurement. So the name says how
+ * many of the category's checks came back without a number, which is the answer a
+ * reader can then look up in one place.
+ */
+export function categoryTableLabel(result: ScanResult, category: Category): string {
+  const label = CATEGORY_LABEL[category];
+  const scored = result.categories.find(c => c.category === category);
+  if (scored?.score !== null) {
+    return label;
+  }
+  const missing = unmeasuredIn(result, category);
+  /* Said here and nowhere else in the row: with this in the name, the cell under
+     "Points lost" carried the same statement in other words, and two forms of one
+     statement read as two. Both figures are a dash, and the name says why. */
+  return missing === 0
+    ? label
+    : `${label} (${plural(missing, 'check')} without a measurement)`;
+}
+
+/** How many of a category's checks came back without a number. */
+export function unmeasuredIn(result: ScanResult, category: Category): number {
+  return withoutMeasurement(result.outcomes).filter(o => o.category === category).length;
 }
 
 /** The checks that came back without a number, in the order they ran. */
@@ -801,6 +862,40 @@ export function noMeasurementGroups(
     }
   }
   return groups;
+}
+
+/** The checks without a measurement, grouped by the category they belong to. */
+export interface NoMeasurementCategory {
+  category: Category;
+  groups: NoMeasurementGroup[];
+}
+
+/**
+ * The checks without a measurement, by category and then by reason.
+ *
+ * The report groups its findings by category, and the table of points leads into
+ * those groups. This section is the other half of that table - the categories that
+ * could not be scored - so it is grouped the same way and can be led into the same
+ * way: a row reading "-" now points at a heading with its own name under it, rather
+ * than at the top of a list the reader has to search.
+ */
+export function noMeasurementByCategory(
+  outcomes: readonly CheckOutcome[],
+  titleOf: (checkId: string) => string,
+): NoMeasurementCategory[] {
+  const order: Category[] = [];
+  for (const outcome of withoutMeasurement(outcomes)) {
+    if (!order.includes(outcome.category)) {
+      order.push(outcome.category);
+    }
+  }
+  return order.map(category => ({
+    category,
+    groups: noMeasurementGroups(
+      outcomes.filter(outcome => outcome.category === category),
+      titleOf,
+    ),
+  }));
 }
 
 /** Names in a row, as a sentence lists them: "one, two and three". */

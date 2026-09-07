@@ -22,7 +22,7 @@ import {
   duration,
   NO_MEASUREMENT_HEADING,
   NO_MEASUREMENT_NOTE,
-  noMeasurementGroups,
+  noMeasurementByCategory,
   oneDecimal,
   percent,
   scanFateNote,
@@ -31,10 +31,11 @@ import {
   SEVERITY_LABEL,
   timestampText,
   WEIGHT_REASON,
+  unmeasuredIn,
   withoutMeasurement
 } from '../../report-shared.ts';
 import type {ScanFate} from '../../report-shared.ts';
-import {FINDINGS_ANCHOR, findingsAnchor} from './anchors.ts';
+import {FINDINGS_ANCHOR, findingsAnchor, NOT_RUN_ANCHOR, notRunAnchor} from './anchors.ts';
 import {CHECK_BY_ID} from './checks.ts';
 
 /**
@@ -122,8 +123,11 @@ const CategoryFigures: React.FunctionComponent<{
   if (points === null) {
     return (
       <>
+        {/* Both a dash: the name of the row says how many of its checks came back
+            without a number, and saying it again here made one statement read as
+            two. */}
         <td className="categories__score">{'-'}</td>
-        <td className="categories__terms">{'nothing measured here'}</td>
+        <td className="categories__terms">{'-'}</td>
       </>
     );
   }
@@ -293,17 +297,31 @@ export const ScoreHeader: React.FunctionComponent<{
 
 
 /**
- * The name of a category, as a jump to its findings.
+ * The name of a category, as a jump to what happened in it.
  *
  * The table answers "where did the points go" and the findings answer "why", two
- * screens apart with nothing between them but this jump. A category that
- * lost nothing has nothing to jump to, so it stays plain text rather than becoming
- * a control that does nothing.
+ * screens apart with nothing between them but this jump. A category that scored
+ * nothing is the other case: its row carries a dash and "nothing measured here",
+ * which says that it was not measured but not why - and the reason is a sentence,
+ * too long for a cell and already written out at the end of the report. So the row
+ * says how many of its checks came back without a number and leads there. A
+ * category that ran and simply found nothing has nowhere to go, so it stays plain
+ * text rather than becoming a control that does nothing.
  */
-const CategoryName: React.FunctionComponent<{category: CategoryScore}> = ({
-  category
-}) => {
+const CategoryName: React.FunctionComponent<{
+  category: CategoryScore;
+  unmeasured: number;
+}> = ({category, unmeasured}) => {
   const label = CATEGORY_LABEL[category.category];
+  if (category.score === null) {
+    return unmeasured === 0 ? (
+      <span className="categories__plain">{label}</span>
+    ) : (
+      <SectionJump anchor={notRunAnchor(category.category)}>
+        {`${label} (${plural(unmeasured, 'check')} without a measurement)`}
+      </SectionJump>
+    );
+  }
   if (category.findings.length === 0) {
     return <span className="categories__plain">{label}</span>;
   }
@@ -345,7 +363,7 @@ export const Categories: React.FunctionComponent<{
         {categories.map(c => (
           <tr key={c.category}>
             <th scope="row" className="categories__name">
-              <CategoryName category={c}/>
+              <CategoryName category={c} unmeasured={unmeasuredIn(result, c.category)}/>
             </th>
             <td className="categories__bar-cell">
               <div className="categories__bar">
@@ -388,16 +406,28 @@ export const NotRun: React.FunctionComponent<{outcomes: CheckOutcome[]}> = ({out
   }
   return (
     <section className="not-run">
-      <h2>{`${NO_MEASUREMENT_HEADING} (${notRun.length})`}</h2>
+      <h2 id={NOT_RUN_ANCHOR}>{`${NO_MEASUREMENT_HEADING} (${notRun.length})`}</h2>
       <p className="not-run__note">{NO_MEASUREMENT_NOTE}</p>
-      <ul className="not-run__list">
-        {noMeasurementGroups(outcomes, id => CHECK_BY_ID.get(id)?.title ?? id).map(group => (
-          <li key={group.phrase}>
-            {`${andList(group.titles)} - `}
-            {group.phrase}
-          </li>
-        ))}
-      </ul>
+      {/* By category, like the findings above, so the table of points can lead into
+          this section the same way it leads into those - to a heading with the
+          reader's own category on it. */}
+      {noMeasurementByCategory(outcomes, id => CHECK_BY_ID.get(id)?.title ?? id).map(
+        ({category, groups}) => (
+          <div key={category} className="not-run__group">
+            <h3 className="not-run__group-title" id={notRunAnchor(category)}>
+              {CATEGORY_LABEL[category]}
+            </h3>
+            <ul className="not-run__list">
+              {groups.map(group => (
+                <li key={group.phrase}>
+                  {`${andList(group.titles)} - `}
+                  {group.phrase}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ),
+      )}
     </section>
   );
 };

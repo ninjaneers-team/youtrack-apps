@@ -5,6 +5,7 @@ import { CHECKS } from '../src/checks/catalog.ts';
 import { runChecks, score } from '../src/engine.ts';
 import {
   ITEM_NOUN,
+  itemKindPage,
   itemNoun,
   categoryPoints,
   dateText,
@@ -26,6 +27,7 @@ import {
 import { trendSentence } from '../src/report-shared.ts';
 import { trendFrom } from '../src/trend.ts';
 import type { CheckChange } from '../src/trend.ts';
+import type { ItemKind } from '../src/types.ts';
 import { DEFAULT_CONFIG } from '../src/types.ts';
 import { syntheticInstance } from './mock-client.ts';
 
@@ -132,6 +134,21 @@ test('a scan is dated the same way wherever it is read', () => {
   assert.equal(timestampText(at), '2026-08-11, 09:07 UTC');
 });
 
+test('the number a row counts leads to the issues, not to its own kind', () => {
+  const origin = 'https://youtrack.example.com';
+  const field = {id: 'f', label: 'Type', detail: '1 of 12494 issues in 24 projects'};
+
+  /* Two links with two meanings: the kind has one page for all of it, and the row's
+     own number has the search behind it. Before, the row led to the page - a list
+     of every field, which answers nothing about an issue. */
+  assert.equal(itemUrl(origin, 'field', field, 'fields.required-but-empty'), null);
+  assert.ok(itemKindPage(origin, 'field')?.startsWith(origin));
+  assert.equal(
+    issueSearchUrl(origin, 'project: {A} and has: -{Type}'),
+    `${origin}/issues?q=project%3A%20%7BA%7D%20and%20has%3A%20-%7BType%7D`,
+  );
+});
+
 test('a plural is written out, not made by appending an s', () => {
   /* One of these nouns does not take its plural at the end. Under the rule that
      appends an s, a report with two of them read "2 group of fieldss". */
@@ -144,19 +161,31 @@ test('a plural is written out, not made by appending an s', () => {
 
 test('every kind of object a check can list has a name and a way there', () => {
   const origin = 'https://youtrack.example.com';
+  /* Three kinds have no address of their own: YouTrack keeps the selected field out
+     of the URL, so a field, a group of fields and a list of values are all
+     administered on one page - and the card links to that page once instead of
+     giving every row a link to it. An account has neither, because a report never
+     leads to a person. Everything else is addressed per row, and a kind added
+     without a case anywhere would silently print plain text where the page had a
+     link the day before. */
+  const onOnePage = ['field', 'field-group', 'value-list'];
   for (const [kind, noun] of Object.entries(ITEM_NOUN)) {
     assert.ok(noun.one.length > 0, `${kind} is called something`);
     assert.ok(noun.many.length > 0, `${kind} is called something in the plural`);
-    const url = itemUrl(origin, kind as keyof typeof ITEM_NOUN, {id: 'x', label: 'X'}, 'any.check');
-    /* An account is the one kind a report never links to. Everything else does, and
-       a kind added without a case in itemUrl would silently print plain text where
-       the page had a link the day before - and the column heading would go on
-       promising one. */
+    const row = itemUrl(origin, kind as ItemKind, {id: 'x', label: 'X'}, 'any.check');
+    const page = itemKindPage(origin, kind as ItemKind);
     if (kind === 'account') {
-      assert.equal(url, null, 'an account is named, never linked to');
-    } else {
-      assert.ok(url?.startsWith(origin), `${noun.one} leads somewhere in the instance`);
+      assert.equal(row, null, 'an account is named, never linked to');
+      assert.equal(page, null, 'and there is no page of accounts to offer either');
+      continue;
     }
+    if (onOnePage.includes(kind)) {
+      assert.equal(row, null, `a single ${noun.one} has no address of its own`);
+      assert.ok(page?.startsWith(origin), `${noun.many} are on one page`);
+      continue;
+    }
+    assert.ok(row?.startsWith(origin), `${noun.one} leads somewhere in the instance`);
+    assert.equal(page, null, `${noun.one} needs no page of its kind`);
   }
 });
 

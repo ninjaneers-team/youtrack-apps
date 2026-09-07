@@ -20,8 +20,11 @@ import type {CheckDefinition, Finding, FindingItem} from '../../types.ts';
 import {
   checkPoints,
   issueSearchUrl,
+  itemKindPage,
   itemNoun,
   itemUrl,
+  ONE_PAGE_LINK,
+  ONE_PAGE_NOTE,
   RATIO_DECIMALS,
   scoreText,
   SEVERITY_LABEL,
@@ -57,6 +60,36 @@ const Evidence: React.FunctionComponent<{finding: Finding}> = ({finding}) => {
  * are accounts, or where the finding counts without listing, the whole check is the
  * only unit there is, and then the column is absent.
  */
+/**
+ * What was measured about one object, and the way to it where that is issues.
+ *
+ * Some rows name one thing and count another: a field is named, and what is
+ * measured about it is how many issues have no value for it. A field has no address
+ * of its own, so what a reader wants from "1 of 12494 issues" is those issues - and
+ * the number is the thing to click.
+ */
+const MeasuredCell: React.FunctionComponent<{
+  item: FindingItem;
+  origin: string | null;
+}> = ({item, origin}) => {
+  const {detail, query} = item;
+  const search = query === undefined ? null : issueSearchUrl(origin, query);
+  if (detail === undefined) {
+    return <td className="finding__item-detail"/>;
+  }
+  return (
+    <td className="finding__item-detail">
+      {search === null ? (
+        detail
+      ) : (
+        <a className="jump" href={search} target="_blank" rel="noreferrer">
+          {detail}
+        </a>
+      )}
+    </td>
+  );
+};
+
 const AffectedItem: React.FunctionComponent<{
   finding: Finding;
   item: FindingItem;
@@ -91,8 +124,56 @@ const AffectedItem: React.FunctionComponent<{
           </a>
         )}
       </td>
-      <td className="finding__item-detail">{item.detail ?? ''}</td>
+      <MeasuredCell item={item} origin={origin}/>
     </tr>
+  );
+};
+
+/**
+ * Said once for a whole column instead of on every row.
+ *
+ * A glyph on three hundred rows is a wall; one at the head of the column that
+ * carries the links says the same thing once.
+ */
+const NewTabHint: React.FunctionComponent = () => (
+  <span className="finding__table-hint">
+    <Icon glyph={newWindowGlyph}/>
+    {' opens in a new tab'}
+  </span>
+);
+
+/**
+ * The columns of the table, and which of them carries links.
+ *
+ * Either the name leads somewhere or the number does, never both: a project has an
+ * address, a field has not and counts issues instead. The hint belongs to whichever
+ * column links, or it promises a link where there is none - which it used to, by
+ * asking only whether the report can build links in this instance at all.
+ */
+const ItemsHead: React.FunctionComponent<{
+  finding: Finding;
+  origin: string | null;
+  marking: boolean;
+}> = ({finding, origin, marking}) => {
+  const items = finding.items ?? [];
+  const named = items.some(
+    item => itemUrl(origin, finding.itemKind, item, finding.checkId) !== null,
+  );
+  const counted = origin !== null && items.some(item => item.query !== undefined);
+  return (
+    <thead>
+      <tr>
+        {marking ? <th scope="col">{'Intentional'}</th> : null}
+        <th scope="col">
+          {itemNoun(finding.itemKind, 1)}
+          {named ? <NewTabHint/> : null}
+        </th>
+        <th scope="col">
+          {'What was measured'}
+          {counted ? <NewTabHint/> : null}
+        </th>
+      </tr>
+    </thead>
   );
 };
 
@@ -120,9 +201,7 @@ const AffectedItems: React.FunctionComponent<{
      hint below said "opens in a new tab" for those as well, because it only asked
      whether the report can build links in this instance - not whether these rows
      carry one. */
-  const linked = items.some(
-    item => itemUrl(origin, finding.itemKind, item, finding.checkId) !== null,
-  );
+  const page = itemKindPage(origin, finding.itemKind);
   return (
     <details className="finding__items">
       <summary>
@@ -136,23 +215,11 @@ const AffectedItems: React.FunctionComponent<{
           and a name that is a way there is only useful if it is actually in the
           list - the exports still cut theirs, since a document has no scrollbar. */}
       <table className="finding__table">
-        <thead>
-          <tr>
-            {onToggleItem === null ? null : <th scope="col">{'Intentional'}</th>}
-            <th scope="col">
-              {itemNoun(finding.itemKind, 1)}
-              {/* Said once for the whole column instead of on every row: the names
-                  below are links, and they open a tab of their own. */}
-              {linked ? (
-                <span className="finding__table-hint">
-                  <Icon glyph={newWindowGlyph}/>
-                  {' opens in a new tab'}
-                </span>
-              ) : null}
-            </th>
-            <th scope="col">{'What was measured'}</th>
-          </tr>
-        </thead>
+        <ItemsHead
+          finding={finding}
+          origin={origin}
+          marking={onToggleItem !== null}
+        />
         <tbody>
           {items.map(it => (
             <AffectedItem
@@ -166,6 +233,18 @@ const AffectedItems: React.FunctionComponent<{
           ))}
         </tbody>
       </table>
+      {/* One link where the rows have no address of their own, and the reason
+          beside it: fifteen rows all leading to the same unfiltered list read as
+          fifteen ways to fifteen places. */}
+      {page === null ? null : (
+        <p className="finding__page">
+          <a className="jump" href={page} target="_blank" rel="noreferrer">
+            {ONE_PAGE_LINK}
+            <Icon glyph={newWindowGlyph} className="jump__new-window"/>
+          </a>
+          <span className="finding__page-note">{ONE_PAGE_NOTE}</span>
+        </p>
+      )}
       {note}
     </details>
   );

@@ -18,6 +18,10 @@ import type { CheckDefinition, Finding } from './types.ts';
 import { CATEGORY_LABEL, plural } from './types.ts';
 import {
   byImpact,
+  categoryTableLabel,
+  itemKindPage,
+  ONE_PAGE_LINK,
+  ONE_PAGE_NOTE,
   MARKED_SECTION_NOTE,
   NO_FINDINGS_NOTE,
   nothingMovedNote,
@@ -34,7 +38,7 @@ import {
   WEIGHT_REASON,
   MOVEMENT_LABEL,
   andList,
-  noMeasurementGroups,
+  noMeasurementByCategory,
   shareText,
   NO_MEASUREMENT_HEADING,
   NO_MEASUREMENT_NOTE,
@@ -388,7 +392,7 @@ export function reportToPrintHtml({
     parts.push(
       `<h2>${NO_MEASUREMENT_HEADING}</h2>`,
       `<p class="note">${NO_MEASUREMENT_NOTE}</p>`,
-      notRunList(notRun, byId),
+      notRunList(result, byId),
     );
   }
 
@@ -489,14 +493,17 @@ function categoriesTable(result: ScanResult): string {
         points === null
           ? '-'
           : `${esc(scoreText(points.worth - points.lost))} / ${esc(scoreText(points.worth))}`;
+      /* A dash where nothing was measured, like the figure beside it: the name of
+         the row says how many of its checks came back without a number, and saying
+         it again here made one statement read as two. */
       const terms =
         points === null
-          ? 'nothing measured here'
+          ? '-'
           : points.lost === 0
             ? 'nothing'
             : esc(scoreText(points.lost));
       return (
-        `<tr><th scope="row">${esc(CATEGORY_LABEL[c.category])}</th>` +
+        `<tr><th scope="row">${esc(categoryTableLabel(result, c.category))}</th>` +
         `<td class="bar-cell">${bar(c.score)}</td>` +
         `<td class="num num--score">${figures}</td>` +
         `<td class="terms">${terms}</td></tr>`
@@ -553,16 +560,19 @@ function bar(score: number | null): string {
   return `<div class="bar"><div class="bar__fill" style="width:${filled}%"></div></div>`;
 }
 
-function notRunList(
-  outcomes: readonly CheckOutcome[],
-  byId: Map<string, CheckDefinition>,
-): string {
-  // Checks that came back for the same reason share one line: three of them under
-  // three bullets read as three failures rather than as one part not applying.
-  const items = noMeasurementGroups(outcomes, (id) => byId.get(id)?.title ?? id)
-    .map((group) => `<li>${esc(andList(group.titles))} - ${esc(group.phrase)}</li>`)
+function notRunList(result: ScanResult, byId: Map<string, CheckDefinition>): string {
+  /* By category, like the findings: the table of points names the categories that
+     could not be scored, and this is where they are. Checks that came back for the
+     same reason share one line - three of them under three bullets read as three
+     failures rather than as one part not applying. */
+  return noMeasurementByCategory(result.outcomes, (id) => byId.get(id)?.title ?? id)
+    .map(({ category, groups }) => {
+      const items = groups
+        .map((group) => `<li>${esc(andList(group.titles))} - ${esc(group.phrase)}</li>`)
+        .join('');
+      return `<h3>${esc(CATEGORY_LABEL[category])}</h3><ul class="list">${items}</ul>`;
+    })
     .join('');
-  return `<ul class="list">${items}</ul>`;
 }
 
 function findingBlock(
@@ -653,9 +663,19 @@ function findingBlock(
         listed
           .slice(0, ITEMS_SHOWN)
           .map((i) => {
-            const text = `${esc(i.label)}${i.detail ? ` - ${esc(i.detail)}` : ''}`;
+            /* The number is the link where the row counts issues: a field has no
+               address of its own, and what a reader wants from "1 of 12494 issues"
+               is those issues. */
+            const search = i.query === undefined ? null : issueSearchUrl(origin, i.query);
+            const shown = i.detail === undefined ? '' : esc(i.detail);
+            const detail =
+              i.detail === undefined
+                ? ''
+                : ` - ${search === null ? shown : `<a href="${esc(search)}">${shown}</a>`}`;
             const href = itemUrl(origin, finding.itemKind, i, finding.checkId);
-            const named = href === null ? text : `<a href="${esc(href)}">${text}</a>`;
+            const label = esc(i.label);
+            const named =
+              href === null ? `${label}${detail}` : `<a href="${esc(href)}">${label}</a>${detail}`;
             /* Named like the others, because it is still true of the instance, and
                marked, because the score above does not count it. */
             return marked.has(i.id)
@@ -667,6 +687,15 @@ function findingBlock(
         rest > 0 ? `<li>... and ${rest} more</li>` : '',
         '</ul>',
       );
+      /* One link where the rows have no address of their own, with the reason: a
+         list of names each linking to the same page promises places it has not. */
+      const page = itemKindPage(origin, finding.itemKind);
+      if (page !== null) {
+        parts.push(
+          `<p class="finding__aside"><a href="${esc(page)}">${ONE_PAGE_LINK}</a>. ` +
+            `${ONE_PAGE_NOTE}</p>`,
+        );
+      }
     }
   }
 

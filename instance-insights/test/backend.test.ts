@@ -417,7 +417,14 @@ test('the weight of an object survives the handler, or a marked object rescores'
           itemKind: 'value-list',
           evidence: [],
           items: [
-            { id: '3:High|Low|Normal', label: 'Priority: High, Normal, Low', detail: '18 lists with these values', affected: 17, measured: 18 },
+            {
+              id: '3:High|Low|Normal',
+              label: 'Priority: High, Normal, Low',
+              detail: '18 lists with these values',
+              query: 'project: {WEB}, {APP} and has: -{Priority}',
+              affected: 17,
+              measured: 18,
+            },
           ],
         },
       },
@@ -430,8 +437,18 @@ test('the weight of an object survives the handler, or a marked object rescores'
      run stands on them: a set of values marked as intentional has to take all its
      copies with it, not count as one list of a list. */
   assert.equal(finding.affected, 20);
+  /* The search behind the row's own number travels with it: made of project keys
+     and a field name, which are identifiers of configuration like everything else
+     kept here, and a restored report leads to the same issues the live one did. */
   assert.deepEqual(finding.items, [
-    { id: '3:High|Low|Normal', label: 'Priority: High, Normal, Low', detail: '18 lists with these values', affected: 17, measured: 18 },
+    {
+      id: '3:High|Low|Normal',
+      label: 'Priority: High, Normal, Low',
+      detail: '18 lists with these values',
+      query: 'project: {WEB}, {APP} and has: -{Priority}',
+      affected: 17,
+      measured: 18,
+    },
   ]);
 });
 
