@@ -2,7 +2,7 @@
 
 A YouTrack app that shows where an instance has drifted over time:
 licences nobody uses, projects without an owner, custom fields that mean the same
-thing under three different names, work that stopped moving.
+thing under three different names, open work nobody has touched in months.
 
 ![The report after a scan: the score, its bar, the trend, and where the points went](marketplace/screenshots/01-report-top.png)
 
@@ -29,7 +29,9 @@ Built by [Ninjaneers GmbH](https://ninjaneers.de), MIT licensed.
   page shows it again without asking the instance anything. It says when it was
   collected, and a scan away is the current state.
 - **A trend** over the last 24 scans, in the report and on a dashboard tile, with the
-  movement spelled out: what improved, what got worse, what is new.
+  movement spelled out: what improved, what got worse, what is new. The tile shows
+  the score and leads to the report; scanning happens on the report page, where
+  somebody is watching a job that takes minutes.
 - **Two exports, for the two places a report goes**: a printable document to hand
   on outside the instance, and Markdown to paste back into it - into the issue that
   tracks the cleanup. Both count affected accounts without naming them, and both
@@ -100,26 +102,34 @@ category.
 | `licensing.inactive-users` | Licences (3) | 10 |
 | `fields.unused-global-field` | Fields & configuration (2) | 6 |
 | `fields.empty-field` | Fields & configuration (2) | 8 |
+| `fields.cloned-value-lists` | Fields & configuration (2) | 7 |
+| `fields.required-but-empty` | Fields & configuration (2) | 9 |
 | `fields.duplicate-field-names` | Fields & configuration (2) | 10 |
 | `fields.state-without-resolved` | Fields & configuration (2) | 10 |
 | `process.unassigned-unresolved` | Process hygiene (2) | 6 |
 | `process.stale-unresolved` | Process hygiene (2) | 8 |
+| `process.intake-vs-throughput` | Process hygiene (2) | 7 |
 | `process.boards-without-wip-limits` | Process hygiene (2) | 5 |
 | `process.overgrown-boards` | Process hygiene (2) | 4 |
 | `process.boards-on-archived-projects` | Process hygiene (2) | 3 |
 | `governance.projects-without-leader` | Governance (2) | 8 |
 | `governance.empty-groups` | Governance (2) | 4 |
+| `governance.open-work-of-blocked-accounts` | Governance (2) | 7 |
+| `governance.boards-owned-by-blocked-accounts` | Governance (2) | 3 |
 | `portfolio.dormant-projects` | Project portfolio (1) | 7 |
 | `portfolio.tiny-projects` | Project portfolio (1) | 5 |
+| `instance.memory-below-database` | Instance setup (2) | 6 |
+| `instance.no-way-to-notify` | Instance setup (2) | 5 |
+| `instance.address-only-works-here` | Instance setup (2) | 4 |
 
 Thresholds live in `DEFAULT_CONFIG` (`src/types.ts`): 90 days without activity for a
 licence, 180 days without an update for a stale issue, 95 % empty for a field,
 20 % unassigned, more than seven columns for a board, fewer than ten issues for a
-project. Every finding says when it may be
+project, and a 90-day window for what arrives against what gets finished. Every finding says when it may be
 firing on something intentional, and none of them states a duration for the work - an
 estimate for an instance the app has never seen would be a guess.
 
-Four definitions are worth knowing, because they are not the obvious ones:
+A few definitions are worth knowing, because they are not the obvious ones:
 
 - **Inactive licences are measured by changes, not by sign-ins.** No API the app can
   reach exposes a last-login time, so the check reads the activity of each account:
@@ -132,6 +142,21 @@ Four definitions are worth knowing, because they are not the obvious ones:
   value; the reference is the number of issues in the projects the field is
   instantiated in. So the check costs one request per field regardless of how many
   projects there are, and still looks at every issue rather than a sample.
+- **A required field is measured against the projects that require it.** A project
+  can declare that a field must hold a value, and the same field can be optional in
+  the next project. So the reference is the issues of the projects that demand a
+  value, and one search per field asks how many of them carry one. What the finding
+  states is the difference, which is a contradiction of the instance's own rule
+  rather than a matter of taste.
+- **Copies of a value list are counted as copies, not as lists.** A list that exists
+  forty times over is one list and thirty-nine copies, and the order the values are
+  listed in is not a difference between them. Comparison is by the values, so two
+  lists with the same values under different names are the same list.
+- **What arrives is compared with what gets finished, over the same 90 days.** Two
+  dates the instance records: when an issue was created, and when it was resolved.
+  Both windows are absolute dates, and an issue that arrived and was finished inside
+  the window counts on both sides - which is what makes the pair a measure of flow
+  rather than of backlog size.
 - **A card counts as being on a board, not as being in its projects.** The two are
   not the same: a board shows the cards placed on it, and an issue can sit in one of
   its projects without ever appearing there. So a board is asked about itself -
@@ -148,10 +173,22 @@ Four definitions are worth knowing, because they are not the obvious ones:
   no finding is built on that difference. What is measured instead is what an
   instance does state - whether an issue is resolved, and when it last moved.
 
+Three checks look at the server rather than at the work in it - its memory against
+its database, whether it can send an email at all, and whether the address in its
+links resolves anywhere but on the server. Those apply to an instance you run
+yourself. On an instance run for you, they step aside with a sentence saying so, and
+the points they would have carried go to the other categories rather than counting
+as zero - so a score of 82 on a hosted instance and a score of 82 on your own server
+are not answers to the same question.
+
 ## What it reads, and what it keeps
 
-The scan reads counts, IDs and timestamps over the REST API. It writes nothing to the
-instance and sends nothing anywhere else.
+The scan reads counts, IDs and timestamps over the REST API, and - where the instance
+will say - a few settings of its own: the size of its database, the memory it has,
+whether email is switched on, whether an address is set for messages about the
+instance, and the address it puts into the links it sends. The address that is set is
+never read, only whether there is one. It writes nothing to the instance and sends
+nothing anywhere else.
 
 Between visits the app keeps four things, all of them in the instance's own
 database and none of them anywhere else.
@@ -192,16 +229,21 @@ the instance.
 ## Load on your instance
 
 A scan's cost follows the size of the instance, not its traffic: one search per
-licensed account, two per project, one per custom field, one per board, and
-twenty-two for the lists it reads and the counts it asks once for the whole
-instance. Those add up to the totals below, which is the point of stating them.
+account, two per project, two per custom field, one per board, and seventeen for the
+lists it reads and the counts it asks once for the whole instance. Those add up to
+the totals below, which is the point of stating them.
 
 | Instance | Requests |
 |---|---|
-| 25 accounts - 10 projects - 5 boards - 20 fields | 92 |
-| 100 accounts - 50 projects - 20 boards - 40 fields | 282 |
-| 500 accounts - 200 projects - 60 boards - 80 fields | 1 062 |
-| 2 000 accounts - 800 projects - 200 boards - 150 fields | 3 972 |
+| 25 accounts - 10 projects - 5 boards - 20 fields | 107 |
+| 100 accounts - 50 projects - 20 boards - 40 fields | 317 |
+| 500 accounts - 200 projects - 60 boards - 80 fields | 1 137 |
+| 2 000 accounts - 800 projects - 200 boards - 150 fields | 4 117 |
+
+The two per field are the upper bound: one asks whether the field is filled at all,
+the second only applies to a field some project demands a value for. An account
+costs one search either way - when it last changed something if it holds a licence,
+what open work it still holds if it has been blocked.
 
 Requests start at least 50 ms apart - at most twenty a second, whatever else is going
 on. That ceiling is the promise to the instance, and it does not move.

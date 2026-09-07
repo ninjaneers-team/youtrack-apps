@@ -24,10 +24,13 @@ import type {
   AgileBoard,
   CountResult,
   CustomField,
+  InstanceOperations,
+  InstanceSettings,
   Project,
   StateBundle,
   User,
   UserGroup,
+  ValueBundle,
   YouTrackClient,
 } from '../src/types.ts';
 import { createRestClient } from '../src/client.ts';
@@ -57,11 +60,21 @@ export class CountingClient implements YouTrackClient {
     listAgileBoards: 0,
     listGroups: 0,
     listStateBundles: 0,
+    listValueBundles: 0,
+    readOperations: 0,
+    readSettings: 0,
   };
 
   private readonly shape: Shape;
   private readonly now: Date;
   private projectsCounted = false;
+  private operationsRead = false;
+  private settingsRead = false;
+  /* The real client reads each of these lists once per scan and hands the same
+     answer to every check that asks. Counted per call, the model charged a scan for
+     six reads of the field list where the instance answers one - and the number the
+     README states would be a number nobody can measure. */
+  private readonly listsRead = new Set<string>();
 
   constructor(shape: Shape, now: Date) {
     this.shape = shape;
@@ -70,6 +83,14 @@ export class CountingClient implements YouTrackClient {
 
   private bump(name: keyof CountingClient['calls']): void {
     this.calls[name] = (this.calls[name] ?? 0) + 1;
+  }
+
+  /** The same, for a list the real client only ever fetches once. */
+  private bumpOnce(name: keyof CountingClient['calls']): void {
+    if (!this.listsRead.has(name)) {
+      this.listsRead.add(name);
+      this.bump(name);
+    }
   }
 
   async count(): Promise<number> {
@@ -88,7 +109,7 @@ export class CountingClient implements YouTrackClient {
   }
 
   async listProjects(): Promise<Project[]> {
-    this.bump('listProjects');
+    this.bumpOnce('listProjects');
     /* The real client counts the issues of every project while building this list,
        because the project resource carries no total - and it builds the list once per
        scan, so the counts are paid once however many checks ask for it. */
@@ -107,32 +128,40 @@ export class CountingClient implements YouTrackClient {
   }
 
   async listCustomFields(): Promise<CustomField[]> {
-    this.bump('listCustomFields');
+    this.bumpOnce('listCustomFields');
     return Array.from({ length: this.shape.fields }, (_, i) => ({
       id: `f-${i}`,
       name: i % 5 === 0 ? 'Priority' : `Field ${i}`,
       fieldType: 'enum[1]',
+      /* Required everywhere, which is the upper bound of what a field costs: one
+         count for whether it is filled at all, and one for the projects that
+         demand a value. A real instance requires a few of its fields, not all. */
       instances: Array.from({ length: this.shape.projects }, (__, p) => ({
         id: `i-${i}-${p}`,
         projectShortName: `P${p}`,
         bundleId: `b-${p}`,
+        required: true,
       })),
     }));
   }
 
   async listUsers(): Promise<User[]> {
-    this.bump('listUsers');
+    this.bumpOnce('listUsers');
     return Array.from({ length: this.shape.users }, (_, i) => ({
       id: `u-${i}`,
       login: `user${i}`,
       fullName: `User ${i}`,
-      banned: false,
+      /* Half of them blocked, which is where the worst case of an account sits: a
+         licensed account is asked once when it last changed anything, a blocked one
+         once what open work it still holds. Either way one request per account,
+         whatever the mix in a real instance. */
+      banned: i % 2 === 1,
       registered: this.now.getTime() - 400 * DAY_MS,
     }));
   }
 
   async listAgileBoards(): Promise<AgileBoard[]> {
-    this.bump('listAgileBoards');
+    this.bumpOnce('listAgileBoards');
     return Array.from({ length: this.shape.boards }, (_, i) => ({
       id: `b-${i}`,
       name: `Board ${i}`,
@@ -141,6 +170,7 @@ export class CountingClient implements YouTrackClient {
       columnField: 'State',
       projects: [`P${i % this.shape.projects}`],
       sprints: ['First sprint'],
+      owner: { login: 'lead', banned: false },
       columns: Array.from({ length: this.shape.columnsPerBoard }, (__, c) => ({
         presentation: `Column ${c}`,
         // The last one is where work ends, as a board says it.
@@ -151,7 +181,7 @@ export class CountingClient implements YouTrackClient {
   }
 
   async listStateBundles(): Promise<StateBundle[]> {
-    this.bump('listStateBundles');
+    this.bumpOnce('listStateBundles');
     // One bundle per project, the way YouTrack sets them up, all of them sound.
     return Array.from({ length: this.shape.projects }, (_, p) => ({
       id: `b-${p}`,
@@ -163,8 +193,47 @@ export class CountingClient implements YouTrackClient {
     }));
   }
 
+  async listValueBundles(): Promise<ValueBundle[]> {
+    this.bumpOnce('listValueBundles');
+    // One list per project, all holding the same values: the copies YouTrack makes
+    // on its own when nobody picks an existing list.
+    return Array.from({ length: this.shape.projects }, (_, p) => ({
+      id: `v-${p}`,
+      name: `Types ${p}`,
+      values: ['Bug', 'Feature', 'Task'],
+    }));
+  }
+
+  async readOperations(): Promise<InstanceOperations | null> {
+    if (!this.operationsRead) {
+      this.operationsRead = true;
+      this.bump('readOperations');
+    }
+    return {
+      selfHosted: true,
+      databaseBytes: 1024,
+      databaseText: '1.0 KB',
+      memoryBytes: 2048,
+      memoryText: '2.0 KB',
+    };
+  }
+
+  async readSettings(): Promise<InstanceSettings | null> {
+    if (!this.settingsRead) {
+      this.settingsRead = true;
+      // Two resources behind one answer: the mail settings and the system ones.
+      this.bump('readSettings');
+      this.bump('readSettings');
+    }
+    return {
+      baseUrl: 'https://youtrack.example.com',
+      administratorEmail: 'admin@example.com',
+      mailEnabled: true,
+    };
+  }
+
   async listGroups(): Promise<UserGroup[]> {
-    this.bump('listGroups');
+    this.bumpOnce('listGroups');
     return Array.from({ length: 20 }, (_, i) => ({
       id: `g-${i}`,
       name: `Group ${i}`,

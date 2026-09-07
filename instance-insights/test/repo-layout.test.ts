@@ -4,6 +4,7 @@ import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 import { CHECKS } from '../src/checks/catalog.ts';
+import { APP_NAME, REPORT_WIDGET } from '../src/report-shared.ts';
 
 /**
  * Guards the layout and the public documentation, so a mistake in either fails a
@@ -134,6 +135,47 @@ test('the README check table matches the catalog', () => {
   );
   for (const [id, cells] of expected) {
     assert.equal(rows.get(id), cells, `README row for ${id} states other numbers`);
+  }
+});
+
+/** The number the first entry of COUNT_WORDS spells out. */
+const SMALLEST_SPELLED_COUNT = 10;
+
+const COUNT_WORDS = [
+  'ten',
+  'eleven',
+  'twelve',
+  'thirteen',
+  'fourteen',
+  'fifteen',
+  'sixteen',
+  'seventeen',
+  'eighteen',
+  'nineteen',
+  'twenty',
+  'twenty-one',
+  'twenty-two',
+  'twenty-three',
+  'twenty-four',
+  'twenty-five',
+  'twenty-six',
+  'twenty-seven',
+  'twenty-eight',
+  'twenty-nine',
+  'thirty',
+];
+
+test('the shipped texts name as many checks as the catalog holds', () => {
+  // The number is spelled out where a reader meets the app before installing it:
+  // the manifest and the marketplace listing. A check that leaves the catalog
+  // without those texts following turns a description into a wrong promise.
+  const spelled = COUNT_WORDS[CHECKS.length - SMALLEST_SPELLED_COUNT];
+  assert.ok(spelled, 'The catalog no longer falls in the range these texts spell out.');
+  for (const name of ['manifest.json', 'README.md', 'marketplace/LISTING.md']) {
+    const text = readFileSync(join(ROOT, name), 'utf8');
+    for (const [said, word] of text.matchAll(/([A-Za-z-]+) read-only checks/g)) {
+      assert.equal(word?.toLowerCase(), spelled, `${name} says "${said}"`);
+    }
   }
 });
 
@@ -275,4 +317,16 @@ test('the sources are plain ASCII', () => {
     }
   }
   assert.deepEqual(offenders, [], 'These files carry characters outside ASCII.');
+});
+
+test('the app page a widget links to is the one the manifest declares', () => {
+  /* The tile links to the report page by name, and the name is the manifest's. A
+     renamed app or a renamed widget would leave that link pointing at nothing, and
+     nothing in a build would say so. */
+  const manifest = readJson('manifest.json');
+  assert.equal(manifest['name'], APP_NAME, 'the app name the link is built from');
+  const widgets = manifest['widgets'];
+  assert.ok(Array.isArray(widgets));
+  const keys = widgets.map((widget) => (widget as {key?: string}).key);
+  assert.ok(keys.includes(REPORT_WIDGET), `no widget keyed ${REPORT_WIDGET}: ${keys.join(', ')}`);
 });

@@ -121,19 +121,19 @@ test('an intentional finding prints a deduction of zero, not its arithmetic', as
 test('a check without a measurement is named with what was missing', () => {
   const outcomes: CheckOutcome[] = [
     {
-      checkId: 'process.aging-wip',
+      checkId: 'process.boards-without-wip-limits',
       category: 'process',
-      weight: 7,
+      weight: 5,
       status: 'skipped',
       finding: null,
-      reason: 'No board has a column between the first and the last.',
+      reason: 'No board in this instance plans without sprints.',
     },
   ];
 
   const html = reportToPrintHtml({ result: score(outcomes), checks: CHECKS, at: NOW });
 
   assert.match(html, /Checks without a measurement/);
-  assert.match(html, /No board has a column between the first and the last\./);
+  assert.match(html, /No board in this instance plans without sprints\./);
   assert.ok(!html.includes('- skipped'), 'the engine vocabulary stays out of the report');
 });
 

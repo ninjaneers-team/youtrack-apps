@@ -19,9 +19,12 @@ import type {
   Evidence,
   Finding,
   FindingItem,
+  InstanceOperations,
+  InstanceSettings,
   Project,
   ScanContext,
   User,
+  ValueBundle,
 } from '../types.ts';
 import {
   agree,
@@ -57,6 +60,28 @@ export const QUERIES = {
   fieldFilled: (field: string): string => `has: {${field}}`,
   projectActivitySince: (shortName: string, since: string): string =>
     `project: {${shortName}} updated: ${since} .. *`,
+  /**
+   * Issues that carry a value for the field, in the given projects only.
+   *
+   * `has:` alone answers for every project the field is attached to, and a field
+   * is not required in all of them. The comma-separated list is how the search
+   * language says "any of these", confirmed against an instance.
+   */
+  fieldFilledIn: (field: string, projects: readonly string[]): string =>
+    `project: ${projects.map((shortName) => `{${shortName}}`).join(', ')} and has: {${field}}`,
+  /** Issues that entered the instance in a window, by their creation date. */
+  createdBetween: (from: string, to: string): string => `created: ${from} .. ${to}`,
+  /**
+   * Issues that left it in the same window, by the date they were resolved.
+   *
+   * The attribute is called `resolved date`. `resolved` on its own is not a
+   * shorter form of it but a parse error, which would take the check down rather
+   * than answer zero.
+   */
+  resolvedBetween: (from: string, to: string): string =>
+    `resolved date: ${from} .. ${to}`,
+  /** Open issues one account is responsible for. */
+  openWorkOf: (login: string): string => `#Unresolved and Assignee: {${login}}`,
   /**
    * The cards a board holds, whichever sprint they sit in.
    *
@@ -371,12 +396,12 @@ const emptyField: CheckDefinition = checkOf({
       );
     }
 
-    /* A field name has to go into a search query, and YouTrack answers 400 for a
-       name it cannot parse there - one that collides with a query keyword, or
-       carries a brace. Such a field counts as unreachable rather than as filled or
-       empty: it stays out of both sides of the ratio, and the number of them is
-       part of the evidence, so the report never presents an unmeasured field as
-       measured. */
+    /* Two ways a field can go unanswered. A name has to go into a search query,
+       and YouTrack answers 400 for one it cannot parse there - a name that collides
+       with a query keyword, or carries a brace. And a count can still be being
+       computed when the scan stops waiting for it. Either way the field stays out
+       of both sides of the ratio, and the number of them is part of the evidence,
+       so the report never presents an unmeasured field as measured. */
     const empties: Array<{ id: string; name: string; share: number; projects: number }> = [];
     let measured = 0;
     let unreachable = 0;
@@ -405,7 +430,7 @@ const emptyField: CheckDefinition = checkOf({
     }
     if (measured === 0) {
       throw new CheckSkipped(
-        `No search query could reach any of the ${candidates.length} fields.`,
+        `The instance answered for none of the ${candidates.length} fields.`,
       );
     }
     if (empties.length === 0) return null;
@@ -419,13 +444,248 @@ const emptyField: CheckDefinition = checkOf({
       evidence: [
         // Only what the headline cannot hold - and only when there is any.
         ...(unreachable > 0
-          ? [{ label: 'Fields no search could reach', value: unreachable }]
+          ? [{ label: 'Fields the instance did not answer for', value: unreachable }]
           : []),
       ],
       items: toItems(empties, ({ id, name, share: emptyShare, projects: count }) => ({
         id,
         label: name,
         detail: `${pct(emptyShare)} empty across ${plural(count, 'project')}`,
+      })),
+    };
+  },
+});
+
+/**
+ * The values of a list, in a form two lists can be compared by.
+ *
+ * Sorted, because the order values are listed in is a display decision and two
+ * lists holding the same values in a different order are the same list. Encoded
+ * rather than joined by a separator, so a value that contains the separator cannot
+ * make two different lists look equal.
+ */
+function valueKey(bundle: ValueBundle): string {
+  return JSON.stringify([...bundle.values].sort());
+}
+
+/**
+ * How long an identifier a check builds may be.
+ *
+ * The handler refuses a longer one, and a mark nobody can set is worse than a
+ * shortened name. `test/catalog.test.ts` holds every check against this, so the
+ * two sides cannot drift apart.
+ */
+export const MAX_ITEM_ID = 250;
+
+/**
+ * Which fields offer a list, by the list's own id.
+ *
+ * A list of values means nothing to a reader on its own - "Bug, Task, Feature" is
+ * not something anybody can act on until they know it is the Type field. The field
+ * list already carries the connection, and it is read by other checks anyway, so
+ * naming the field costs no request.
+ */
+function fieldsByBundle(fields: readonly CustomField[]): Map<string, Set<string>> {
+  const byBundle = new Map<string, Set<string>>();
+  for (const field of fields) {
+    for (const instance of field.instances) {
+      if (instance.bundleId === null) {
+        continue;
+      }
+      const named = byBundle.get(instance.bundleId) ?? new Set<string>();
+      named.add(field.name);
+      byBundle.set(instance.bundleId, named);
+    }
+  }
+  return byBundle;
+}
+
+/**
+ * The identity of a group of lists holding the same values.
+ *
+ * The values themselves, not one of the lists: which copies exist changes as
+ * projects come and go, and a decision is about the set of values they share. The
+ * count goes in front so two groups cannot become one by being cut to the same
+ * length - which only a list of some fifty values reaches at all.
+ */
+function valueGroupId(values: readonly string[]): string {
+  return `${values.length}:${[...values].sort().join('|')}`.slice(0, MAX_ITEM_ID);
+}
+
+const clonedValueLists: CheckDefinition = checkOf({
+  id: 'fields.cloned-value-lists',
+  category: 'fields',
+  title: 'Value lists kept as copies',
+  weight: 7,
+  why:
+    'A new project gets a list of values of its own unless someone picks an ' +
+    'existing one, so copies of the same list accumulate without anyone deciding ' +
+    'to make them. Renaming a value then has to happen once per copy, and a report ' +
+    'that groups by the field treats each copy as its own set of values, which is ' +
+    'what makes an analysis across projects come out wrong rather than merely ' +
+    'incomplete.',
+  legitimateWhen:
+    'Projects that are meant to grow apart, where one of them will take values the ' +
+    'others should not have.',
+  whatItInvolves:
+    'Pointing several projects at one list is a setting per project, and the values ' +
+    'have to match before it can be done. The agreement in front of it is the work: ' +
+    'the teams sharing a list share every later change to it.',
+  run: async (ctx): Promise<Measured | null> => {
+    const bundles = await ctx.client.listValueBundles();
+    const named = fieldsByBundle(await ctx.client.listCustomFields());
+    /* An empty list is a different matter - a field nobody finished setting up -
+       and comparing empty to empty would group all of them into one large finding
+       about nothing. */
+    const filled = bundles.filter((bundle) => bundle.values.length > 0);
+    if (filled.length === 0) {
+      throw new CheckSkipped('No list of field values in this instance holds a value.');
+    }
+
+    const groups = new Map<string, ValueBundle[]>();
+    for (const bundle of filled) {
+      const key = valueKey(bundle);
+      const group = groups.get(key);
+      if (group === undefined) {
+        groups.set(key, [bundle]);
+      } else {
+        group.push(bundle);
+      }
+    }
+    const copied = [...groups.values()]
+      .filter((group) => group.length > 1)
+      .map((group) => ({
+        id: valueGroupId(group[0]?.values ?? []),
+        values: group[0]?.values ?? [],
+        copies: group.length,
+        /* Every field the copies of this list belong to. Usually one - each project
+           holds a copy of the same field's list - but a set of values is free to be
+           offered by two fields, and then the row has to name both or it names the
+           wrong one. */
+        fields: [
+          ...new Set(group.flatMap((bundle) => [...(named.get(bundle.id) ?? [])])),
+        ].sort(),
+      }));
+    if (copied.length === 0) return null;
+
+    /* One copy of a list is the list; the rest are the copies. Counting whole
+       groups would say two lists that exist twice are the same finding as two that
+       exist forty times over. */
+    const redundant = copied.reduce((sum, group) => sum + group.copies - 1, 0);
+    const ratio = share(redundant, filled.length);
+    return {
+      itemKind: 'value-list',
+      headline: `${redundant} of ${plural(filled.length, 'value list')} ${agree(redundant, 'is', 'are')} a copy of another list holding the same values.`,
+      ratio,
+      affected: redundant,
+      items: toItems(copied, (group) => ({
+        // The values are the identity of the group: the names of the lists differ
+        // from copy to copy, and a decision about one of them is a decision about
+        // the set of values they all hold.
+        id: group.id,
+        label:
+          group.fields.length === 0
+            ? group.values.join(', ')
+            : `${group.fields.join(', ')}: ${group.values.join(', ')}`,
+        detail: `${plural(group.copies, 'list')} with these values`,
+        affected: group.copies - 1,
+        measured: group.copies,
+      })),
+    };
+  },
+});
+
+const requiredButEmpty: CheckDefinition = checkOf({
+  id: 'fields.required-but-empty',
+  category: 'fields',
+  title: 'Required fields without a value',
+  weight: 9,
+  why:
+    'A project can declare that a field must hold a value. Issues that have none ' +
+    'anyway got there before the rule was made, through an import, or through the ' +
+    'API, which does not enforce it. Every report that groups by the field carries ' +
+    'them as a category nobody asked for, and that is what makes numbers out of ' +
+    'YouTrack disagree with each other.',
+  legitimateWhen:
+    'A requirement introduced recently and deliberately not applied backwards, ' +
+    'where the older issues are closed and nobody will report on them again.',
+  whatItInvolves:
+    'Filling the gaps is a bulk edit per field, and the question in front of it is ' +
+    'what the value should be for issues nobody remembers. Where that cannot be ' +
+    'answered, the honest change is to the requirement rather than to the issues.',
+  run: async (ctx): Promise<Measured | null> => {
+    const projects = countedProjects(await ctx.client.listProjects());
+    const issuesByProject = new Map(projects.map((p) => [p.shortName, p.issuesCount]));
+    const fields = await ctx.client.listCustomFields();
+
+    /* Only the projects that require the field, and only those a query can name:
+       the reference is their issue total, which the project list already carries.
+       So a field costs one count no matter how many projects require it. */
+    const candidates = fields
+      .map((field) => {
+        const where = field.instances
+          .filter((i) => i.required && issuesByProject.has(i.projectShortName))
+          .map((i) => i.projectShortName);
+        return {
+          field,
+          where,
+          issues: where.reduce(
+            (total, shortName) => total + (issuesByProject.get(shortName) ?? 0),
+            0,
+          ),
+        };
+      })
+      .filter(({ where, issues }) => where.length > 0 && issues > 0);
+    if (candidates.length === 0) {
+      throw new CheckSkipped('No project in this instance requires a value for a field.');
+    }
+
+    const filledCounts = await ctx.client.countMany(
+      candidates.map(({ field, where }) => QUERIES.fieldFilledIn(field.name, where)),
+    );
+    const gaps: Array<{ id: string; name: string; gap: number; issues: number; projects: number }> =
+      [];
+    let measuredIssues = 0;
+    let unreachable = 0;
+    for (const [index, { field, where, issues }] of candidates.entries()) {
+      const result = filledCounts[index];
+      if (!result || 'failed' in result) {
+        unreachable++;
+        continue;
+      }
+      measuredIssues += issues;
+      // Filled and total are two counts taken moments apart, so the difference can
+      // come out negative when issues moved in between. That is not a gap.
+      const gap = Math.max(0, issues - result.count);
+      if (gap > 0) {
+        gaps.push({ id: field.id, name: field.name, gap, issues, projects: where.length });
+      }
+    }
+    if (measuredIssues === 0) {
+      throw new CheckSkipped(
+        `The instance answered for none of the ${candidates.length} required fields.`,
+      );
+    }
+    if (gaps.length === 0) return null;
+
+    const missing = gaps.reduce((sum, entry) => sum + entry.gap, 0);
+    const ratio = share(missing, measuredIssues);
+    return {
+      itemKind: 'field',
+      headline: `${missing} of ${plural(measuredIssues, 'issue')} in the projects that require a field ${agree(missing, 'has', 'have')} no value for it.`,
+      ratio,
+      affected: missing,
+      evidence: [
+        ...(unreachable > 0
+          ? [{ label: 'Required fields the instance did not answer for', value: unreachable }]
+          : []),
+      ],
+      items: toItems(gaps, (entry) => ({
+        id: entry.id,
+        label: entry.name,
+        detail: `${entry.gap} of ${plural(entry.issues, 'issue')} in ${plural(entry.projects, 'project')}`,
+        affected: entry.gap,
+        measured: entry.issues,
       })),
     };
   },
@@ -764,7 +1024,172 @@ const overgrownBoards: CheckDefinition = checkOf({
   },
 });
 
+const intakeVsThroughput: CheckDefinition = checkOf({
+  id: 'process.intake-vs-throughput',
+  category: 'process',
+  title: 'More work arriving than leaving',
+  weight: 7,
+  why:
+    'An instance that takes in more issues than it finishes accumulates a backlog ' +
+    'that no amount of prioritising inside it can clear. The two numbers are the ' +
+    'ones a capacity conversation starts from, and neither of them is visible from ' +
+    'inside a single project.',
+  legitimateWhen:
+    'A phase of deliberate collecting - a discovery period, a migration, or an ' +
+    'intake that is meant to be triaged later.',
+  whatItInvolves:
+    'Nothing in the configuration changes this. What it decides is a conversation ' +
+    'about capacity and about what is allowed to arrive: who may open an issue, ' +
+    'what gets triaged away, and whether the team that finishes them is the size ' +
+    'the arrival rate assumes.',
+  run: async (ctx): Promise<Measured | null> => {
+    const days = ctx.config.flowWindowDays;
+    const from = isoDate(ctx.now, days);
+    const to = isoDate(ctx.now, 0);
+    const counts = requireCounts(
+      await ctx.client.countMany([
+        QUERIES.createdBetween(from, to),
+        QUERIES.resolvedBetween(from, to),
+      ]),
+    );
+    const [created, resolved] = counts;
+    if (created === undefined || resolved === undefined) {
+      throw new Error('The instance answered fewer counts than were asked for.');
+    }
+    if (created === 0) {
+      throw new CheckSkipped(`No issue was created in this instance in ${days} days.`);
+    }
+    if (resolved >= created) return null;
+
+    /* The share of the arrivals that stayed. A window that ends level comes out at
+       zero rather than at a threshold, so an instance that is just about keeping
+       up reads as just about keeping up. */
+    const ratio = share(created - resolved, created);
+    return {
+      headline: `This instance took in ${plural(created, 'issue')} in the last ${days} days and finished ${resolved}.`,
+      ratio,
+      query: QUERIES.createdBetween(from, to),
+    };
+  },
+});
+
 // --- Governance --------------------------------------------------------------
+
+const openWorkOfBlockedAccounts: CheckDefinition = checkOf({
+  id: 'governance.open-work-of-blocked-accounts',
+  category: 'governance',
+  title: 'Open work on accounts without access',
+  weight: 7,
+  itemsNamePeople: true,
+  why:
+    'Blocking an account is the last step of an offboarding, and the issues that ' +
+    'were assigned to it stay where they are. Nobody looks there, because the ' +
+    'assignee is somebody who has left, and no filter anyone still uses names them.',
+  legitimateWhen:
+    'Issues kept for the record on purpose, or a project that was closed together ' +
+    'with the account.',
+  whatItInvolves:
+    'Reassigning is a bulk edit per account. The decision in front of it belongs to ' +
+    'whoever took the work over, and it is worth making it a step of the ' +
+    'offboarding: reassign first, block afterwards.',
+  run: async (ctx): Promise<Measured | null> => {
+    const blocked = (await ctx.client.listUsers()).filter((user) => user.banned);
+    if (blocked.length === 0) {
+      throw new CheckSkipped('No account in this instance is blocked.');
+    }
+    const open = await ctx.client.count(QUERIES.unresolved());
+    if (open === 0) {
+      throw new CheckSkipped('The instance has no open issues.');
+    }
+
+    const counts = await ctx.client.countMany(
+      blocked.map((user) => QUERIES.openWorkOf(user.login)),
+    );
+    const holders: Array<{ user: User; open: number }> = [];
+    let unreachable = 0;
+    for (const [index, user] of blocked.entries()) {
+      const result = counts[index];
+      /* Two ways an account can go unanswered: a login free to hold a character
+         the parser reads as syntax, and a count the instance was still computing
+         when the scan stopped waiting. Either way the account is unmeasured rather
+         than clean, and the number of them travels with the finding. */
+      if (!result || 'failed' in result) {
+        unreachable++;
+        continue;
+      }
+      if (result.count > 0) {
+        holders.push({ user, open: result.count });
+      }
+    }
+    if (holders.length === 0) return null;
+
+    const stranded = holders.reduce((sum, entry) => sum + entry.open, 0);
+    const ratio = share(stranded, open);
+    return {
+      itemKind: 'account',
+      headline: `${stranded} of ${plural(open, 'open issue')} ${agree(stranded, 'is', 'are')} assigned to an account that can no longer sign in.`,
+      ratio,
+      affected: stranded,
+      evidence: [
+        ...(unreachable > 0
+          ? [{ label: 'Blocked accounts the instance did not answer for', value: unreachable }]
+          : []),
+      ],
+      items: toItems(holders, (entry) => ({
+        id: entry.user.id,
+        label: entry.user.login,
+        detail: plural(entry.open, 'open issue'),
+        affected: entry.open,
+        // The population is the open issues, not the accounts: taking one account
+        // out of the decision takes its issues out of the numerator and leaves the
+        // instance's open issues as they are.
+        measured: 0,
+      })),
+    };
+  },
+});
+
+const boardsOwnedByBlockedAccounts: CheckDefinition = checkOf({
+  id: 'governance.boards-owned-by-blocked-accounts',
+  category: 'governance',
+  title: 'Boards whose owner has no access',
+  weight: 3,
+  why:
+    'A board belongs to the account that created it. When that account loses ' +
+    'access, the board keeps working and keeps being used, but the person who ' +
+    'knew what it was for is gone - and so is anyone who feels responsible for its ' +
+    'columns and its sprints.',
+  legitimateWhen:
+    'A board the team maintains together, where the owner was only ever whoever ' +
+    'happened to create it.',
+  whatItInvolves:
+    'Handing a board over is one setting. Deciding who to hand it to is a question ' +
+    'for the team that uses it, and it is worth asking whether the board is still ' +
+    'in use at all.',
+  run: async (ctx): Promise<Measured | null> => {
+    const boards = await ctx.client.listAgileBoards();
+    if (boards.length === 0) {
+      throw new CheckSkipped('The instance has no agile boards.');
+    }
+    /* An owner the instance did not name is not an owner without access. The
+       attribute is optional here for that reason: absent means unknown, and an
+       unknown owner is no finding. */
+    const orphaned = boards.filter((board) => board.owner?.banned === true);
+    if (orphaned.length === 0) return null;
+
+    const ratio = share(orphaned.length, boards.length);
+    return {
+      itemKind: 'board',
+      headline: `${orphaned.length} of ${plural(boards.length, 'board')} ${agree(orphaned.length, 'belongs', 'belong')} to an account that can no longer sign in.`,
+      ratio,
+      total: boards.length,
+      // The board is what a reader acts on, and the account behind it stays out of
+      // the row: a finding about configuration should not carry a person's login
+      // into what gets stored.
+      items: toItems(orphaned, (board) => ({ id: board.id, label: board.name })),
+    };
+  },
+});
 
 const projectsWithoutLeader: CheckDefinition = checkOf({
   id: 'governance.projects-without-leader',
@@ -1041,19 +1466,208 @@ const boardsOnArchivedProjects: CheckDefinition = checkOf({
   },
 });
 
+// --- Instance setup ----------------------------------------------------------
+
+/**
+ * What the instance says about the server it runs on, for the checks that are
+ * only answerable where somebody owns that server.
+ *
+ * The gate opens only on a positive answer. JetBrains states that a telemetry
+ * attribute an edition does not support comes back empty, so a path that arrives
+ * is proof of a server of one's own - while its absence could equally be a reader
+ * without the permission to ask. Treating silence as proof would tell the
+ * administrator of a hosted instance that his email is switched off, and a single
+ * finding like that costs the credibility of every other one.
+ */
+async function ownServer(ctx: ScanContext): Promise<InstanceOperations> {
+  const operations = await ctx.client.readOperations();
+  if (operations === null) {
+    throw new CheckSkipped(
+      'Reading how this instance is run needs permission to administer it.',
+    );
+  }
+  if (!operations.selfHosted) {
+    throw new CheckSkipped(
+      'This instance is run for you, so the server behind it is looked after for you.',
+    );
+  }
+  return operations;
+}
+
+/** The settings that are read as a whole, or the reason there is nothing to read. */
+async function instanceSettings(ctx: ScanContext): Promise<InstanceSettings> {
+  const settings = await ctx.client.readSettings();
+  if (settings === null) {
+    throw new CheckSkipped(
+      'Reading the settings of this instance needs permission to administer it.',
+    );
+  }
+  return settings;
+}
+
+const memoryBelowDatabase: CheckDefinition = checkOf({
+  id: 'instance.memory-below-database',
+  category: 'instance',
+  title: 'Less memory than database',
+  weight: 6,
+  why:
+    'JetBrains states the rule plainly: the memory available to YouTrack should be ' +
+    'larger than the database it works on. Below that, searches take longer and ' +
+    'complex ones take much longer. Nothing announces it - YouTrack raises its own ' +
+    'memory in steps on its own, but stops before it would take four fifths of the ' +
+    'machine, and then simply keeps going slower.',
+  legitimateWhen:
+    'A database whose size comes from attachments rather than from issues, where ' +
+    'the part that is searched is much smaller than the whole.',
+  whatItInvolves:
+    'More memory for the server, which is a change to how it is started and ' +
+    'usually a request to whoever runs the machine. The alternative is a smaller ' +
+    'database, and the first place to look there is attachments.',
+  run: async (ctx): Promise<Measured | null> => {
+    const operations = await ownServer(ctx);
+    const { databaseBytes, memoryBytes, databaseText, memoryText } = operations;
+    if (databaseBytes === null || memoryBytes === null) {
+      throw new CheckSkipped(
+        'This instance did not state both its database size and its memory.',
+      );
+    }
+    if (memoryBytes >= databaseBytes) return null;
+
+    const ratio = share(databaseBytes - memoryBytes, databaseBytes);
+    return {
+      headline: `The database is ${databaseText} and YouTrack has ${memoryText} of memory to work on it.`,
+      ratio,
+    };
+  },
+});
+
+const noWayToNotify: CheckDefinition = checkOf({
+  id: 'instance.no-way-to-notify',
+  category: 'instance',
+  title: 'Nothing can be announced',
+  weight: 5,
+  why:
+    'Email has to be switched on for this instance to tell anybody anything, and ' +
+    'an address has to be set for what it has to say about itself. Where both are ' +
+    'missing, an assignment reaches nobody and neither does a warning about the ' +
+    'instance - and it looks like a quiet tool rather than a switched-off one, ' +
+    'which is why teams drift to talking around it.',
+  legitimateWhen:
+    'Notifications deliberately handled elsewhere, through a chat integration that ' +
+    'carries them instead.',
+  whatItInvolves:
+    'Both are settings, and the work is not in setting them: an outgoing mail ' +
+    'server has to exist and be allowed to send, which is a conversation with ' +
+    'whoever runs mail.',
+  run: async (ctx): Promise<Measured | null> => {
+    await ownServer(ctx);
+    const settings = await instanceSettings(ctx);
+    /* Two ways out of the instance, judged separately, because an attribute this
+       instance did not answer is not a channel that is missing. Only what came
+       back counts - on either side of the share. */
+    const channels = [
+      {
+        known: settings.mailEnabled !== null,
+        missing: settings.mailEnabled === false,
+        said: 'Email notifications are switched off, so a change to an issue reaches nobody.',
+      },
+      {
+        known: true,
+        missing: !settings.administratorEmail,
+        said: 'No address is set for what this instance has to say about itself.',
+      },
+    ];
+    const known = channels.filter((channel) => channel.known);
+    if (known.length === 0) {
+      throw new CheckSkipped('This instance did not state how it reaches anyone.');
+    }
+    const missing = known.filter((channel) => channel.missing);
+    if (missing.length === 0) return null;
+
+    return {
+      headline: missing.map((channel) => channel.said).join(' '),
+      ratio: share(missing.length, known.length),
+    };
+  },
+});
+
+/** Addresses that resolve on the server and nowhere else. */
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '[::1]']);
+
+/**
+ * Whether an address only works on the machine that serves it.
+ *
+ * An address the URL parser cannot read is left alone rather than reported: it may
+ * be a form this app does not know, and claiming a broken link on that basis would
+ * be a guess.
+ */
+function localOnly(said: string): boolean {
+  try {
+    return LOCAL_HOSTS.has(new URL(said).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+const baseUrlLocalOnly: CheckDefinition = checkOf({
+  id: 'instance.address-only-works-here',
+  category: 'instance',
+  title: 'Links that only work on the server',
+  weight: 4,
+  why:
+    'Every link this instance sends out - in an email, in an invitation - is built ' +
+    'from one address it was given at setup. When that address is the one the ' +
+    'server sees itself under, the links work for nobody who receives them, and ' +
+    'the usual reading of that is that notifications are broken.',
+  legitimateWhen:
+    'An instance that is only ever reached from the machine it runs on, and sends ' +
+    'nothing to anybody.',
+  whatItInvolves:
+    'One setting, once the address the instance is reached under is known. Where a ' +
+    'proxy sits in front, it is that address rather than the one the server sees.',
+  run: async (ctx): Promise<Measured | null> => {
+    await ownServer(ctx);
+    const settings = await instanceSettings(ctx);
+    const said = settings.baseUrl;
+    if (said === null) {
+      throw new CheckSkipped('This instance did not state the address it puts into its links.');
+    }
+    if (said.length === 0) {
+      return {
+        headline: 'This instance has no address set for the links it sends out.',
+        ratio: 1,
+      };
+    }
+    if (!localOnly(said)) return null;
+
+    return {
+      headline: `The links this instance sends out are built from ${said}, which resolves on the server and nowhere else.`,
+      ratio: 1,
+    };
+  },
+});
+
 export const CHECKS: readonly CheckDefinition[] = [
   inactiveUsers,
   unusedGlobalField,
   emptyField,
+  clonedValueLists,
+  requiredButEmpty,
   duplicateFieldNames,
   stateWithoutResolved,
   unassignedUnresolved,
   staleUnresolved,
+  intakeVsThroughput,
   boardsWithoutWipLimits,
   overgrownBoards,
   boardsOnArchivedProjects,
   projectsWithoutLeader,
   emptyGroups,
+  openWorkOfBlockedAccounts,
+  boardsOwnedByBlockedAccounts,
   dormantProjects,
   tinyProjects,
+  memoryBelowDatabase,
+  noWayToNotify,
+  baseUrlLocalOnly,
 ];

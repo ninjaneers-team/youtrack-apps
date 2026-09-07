@@ -1,25 +1,36 @@
-import React, {memo, useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import React, {memo, useCallback, useEffect, useMemo, useState} from 'react';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
+import Icon from '@jetbrains/ring-ui-built/components/icon/icon';
 import Loader from '@jetbrains/ring-ui-built/components/loader/loader';
+import newWindowGlyph from '@jetbrains/icons/new-window';
 
-import type {IgnoredItems} from '../../engine.ts';
-import {CHECKS} from '../../checks/catalog.ts';
-import {DEFAULT_CONFIG, plural} from '../../types.ts';
+import {plural} from '../../types.ts';
 
-import {createHostClient} from '../../host-client.ts';
-import {createAppStateClient, itemsByCheck} from '../../app-state.ts';
+import {createAppStateClient} from '../../app-state.ts';
 import type {ScanAggregate} from '../../app-state.ts';
-import {startScan as startSession} from '../../scan-session.ts';
-import type {ScanHandle} from '../../scan-session.ts';
 import {agoPhrase, scanUnderWay, scoreBeforeDecisions, trendFrom} from '../../trend.ts';
-import {dateText, oneDecimal, scoreText} from '../../report-shared.ts';
+import {
+  dateText,
+  instanceOrigin,
+  oneDecimal,
+  reportPageUrl,
+  scoreText
+} from '../../report-shared.ts';
 
 /**
- * Dashboard tile. Shows the score of the last scan and can start a new one.
+ * Dashboard tile. Shows the score of the last scan and leads to the report.
  *
  * The score comes from the app's global storage, not from this widget's own cache,
  * so a scan started on the report page shows up here too. Reopening reads the
- * stored aggregates instead of scanning again.
+ * stored aggregates rather than measuring anything.
+ *
+ * A scan cannot be started from here, and that is deliberate. It is a job in the
+ * foreground of whichever tab holds it - a few hundred requests on a small instance
+ * and a few thousand on a large one, measured at five and a half minutes for three
+ * hundred - and a dashboard is the page a reader leaves first. Left, it dies, and
+ * everything it asked the instance was asked for nothing. A tile also has no room
+ * to show what a job of that length is doing. So the scan lives on the report page,
+ * where somebody is watching it, and the tile leads there.
  */
 
 const host = await YTApp.register();
@@ -27,18 +38,14 @@ const appState = createAppStateClient(host);
 
 type State =
   | {phase: 'loading'}
-  /** `sent` is the number of requests the running scan has sent to the instance. */
-  | {phase: 'running'; sent: number}
   | {phase: 'ready'}
   /**
    * The app's own storage did not answer.
    *
-   * Not the same as "no scan has run yet", and it must not look like it: the score
-   * and the standing decisions both live there, and a scan started without them
-   * would store a score that ignores what an administrator decided.
+   * Not the same as "no scan has run yet", and it must not look like it: one is a
+   * tile that has nothing to show yet, the other a tile that cannot see.
    */
-  | {phase: 'unreadable'}
-  | {phase: 'error'; message: string};
+  | {phase: 'unreadable'};
 
 /**
  * Movement against the previous scan, or nothing at all before there is one.
@@ -98,19 +105,41 @@ const ScoreView: React.FunctionComponent<{lastScan: ScanAggregate}> = ({
   );
 };
 
+/**
+ * The way to the report, or a sentence where a link cannot be built.
+ *
+ * What the reader gains rather than where it goes: the report is where the findings
+ * behind this number are, and where a new scan is started. A tab of its own, so a
+ * dashboard nobody asked to leave stays open - said with the glyph the instance
+ * uses for it, since a link that replaces the page it was clicked on is the one
+ * surprise a tile can spring.
+ */
+const ToReport: React.FunctionComponent<{href: string | null; label: string}> = ({
+  href,
+  label
+}) =>
+  href === null ? (
+    <p className="score-tile__at">
+      {'Open Instance Insights from the main menu for the findings behind this.'}
+    </p>
+  ) : (
+    <Button primary href={href} target="_blank" rel="noreferrer">
+      {label}
+      <Icon glyph={newWindowGlyph} className="score-tile__new-window"/>
+    </Button>
+  );
+
 const ScoreFoot: React.FunctionComponent<{
   lastScan: ScanAggregate;
   delta: number | null;
-  onScan: () => void;
-}> = ({lastScan, delta, onScan}) => (
+  reportHref: string | null;
+}> = ({lastScan, delta, reportHref}) => (
   <div className="score-tile__foot">
     <p className="score-tile__at">
       {`As of ${dateText(new Date(lastScan.at))}`}
       {deltaLabel(delta)}
     </p>
-    {/* Not "Refresh": a scan asks the instance a few hundred questions, and the
-        report page calls the same action by the same name. */}
-    <Button primary onClick={onScan}>{'Scan again'}</Button>
+    <ToReport href={reportHref} label={'Findings and a new scan'}/>
   </div>
 );
 
@@ -134,8 +163,8 @@ const ReadyTile: React.FunctionComponent<{
   history: ScanAggregate[];
   scanElsewhere: string | null;
   now: Date;
-  onScan: () => void;
-}> = ({history, scanElsewhere, now, onScan}) => {
+  reportHref: string | null;
+}> = ({history, scanElsewhere, now, reportHref}) => {
   const lastScan = history[0] ?? null;
   const elsewhere =
     scanElsewhere === null ? null : <ScanElsewhere startedAt={scanElsewhere} now={now}/>;
@@ -145,7 +174,7 @@ const ReadyTile: React.FunctionComponent<{
       <div className="score-tile">
         <p className="score-tile__empty">{'No scan has run yet.'}</p>
         {elsewhere}
-        <Button primary onClick={onScan}>{'Start scan'}</Button>
+        <ToReport href={reportHref} label={'Open Instance Insights'}/>
       </div>
     );
   }
@@ -153,27 +182,22 @@ const ReadyTile: React.FunctionComponent<{
     <div className="score-tile">
       <ScoreView lastScan={lastScan}/>
       {elsewhere}
-      <ScoreFoot lastScan={lastScan} delta={measuredDelta} onScan={onScan}/>
+      <ScoreFoot lastScan={lastScan} delta={measuredDelta} reportHref={reportHref}/>
     </div>
   );
 };
 
 const AppComponent: React.FunctionComponent = () => {
   const [state, setState] = useState<State>({phase: 'loading'});
-  // Kept next to the phase so a stopped scan can leave the last score standing.
   const [history, setHistory] = useState<ScanAggregate[]>([]);
-  const running = useRef<ScanHandle | null>(null);
-  const stopScan = useCallback(() => running.current?.stop(), []);
-  /** When a scan the report page started was started, or null when none was. */
+  /** When a scan somebody else started was started, or null when none was. */
   const [scanElsewhere, setScanElsewhere] = useState<string | null>(null);
+  /* The way to the report page, once the instance behind this tile is established.
+     Null in the development entry, where the page is served by a dev server and a
+     link into it would lead nowhere. */
+  const [reportHref, setReportHref] = useState<string | null>(null);
   // Fixed at mount, like the age of the last scan: a tile sits open for hours.
   const openedAt = useMemo(() => new Date(), []);
-  /* What the instance has decided is not shown on the tile, only applied by it, so
-     it stays out of the render and in a ref. */
-  const decisions = useRef<{checks: ReadonlySet<string>; items: IgnoredItems}>({
-    checks: new Set(),
-    items: new Map()
-  });
 
   /* Bumped to read the state again: the failure is usually a blip, and a tile that
      can only be fixed by reloading the whole dashboard is a tile nobody fixes. */
@@ -188,10 +212,7 @@ const AppComponent: React.FunctionComponent = () => {
       .read()
       .then(stored => {
         setHistory(stored.history);
-        decisions.current = {
-          checks: new Set(stored.ignoredChecks),
-          items: itemsByCheck(stored.ignoredItems)
-        };
+        setReportHref(reportPageUrl(instanceOrigin(stored.host, document.baseURI)));
         setScanElsewhere(
           scanUnderWay(stored.scanStarted, stored.lastScan?.at, openedAt, stored.lastRun?.seconds)
         );
@@ -201,60 +222,10 @@ const AppComponent: React.FunctionComponent = () => {
     // `openedAt` is the moment this tile opened and never changes after it.
   }, [reads, openedAt]);
 
-  const runScanNow = useCallback(async () => {
-    // This tile is the one scanning now, whatever it read when it opened.
-    setScanElsewhere(null);
-    const startedAt = new Date();
-    /* A tile has no room for a progress bar, and a scan of a large instance takes
-       minutes, so the request count is what shows it is alive. Said before the scan
-       starts, because the first count arrives while it is starting. */
-    setState({phase: 'running', sent: 0});
-    const handle = startSession({
-      checks: CHECKS,
-      config: DEFAULT_CONFIG,
-      store: appState,
-      client: hooks => createHostClient(host, hooks),
-      /* With the standing decisions, or a scan started here would store a score
-         the report page contradicts: what an administrator marked as intentional
-         holds for every scan, whichever widget starts it. */
-      decisions: decisions.current,
-      /* True by construction: a tile whose storage did not answer shows what that
-         means and an invitation to read again, not a button that scans. */
-      stateRead: true,
-      startedAt,
-      onRequest: sent =>
-        setState(prev => (prev.phase === 'running' ? {phase: 'running', sent} : prev))
-    });
-    running.current = handle;
-    try {
-      const run = await handle.done;
-      if (run.history !== null) {
-        setHistory(run.history);
-      }
-      // Part of an instance has no score worth storing, and the findings of a
-      // partial scan belong on the report page, not on a tile.
-      setState({phase: 'ready'});
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setState({phase: 'error', message});
-    }
-  }, []);
-
   if (state.phase === 'loading') {
     return (
       <div className="score-tile score-tile--center">
         <Loader/>
-      </div>
-    );
-  }
-
-  if (state.phase === 'running') {
-    return (
-      <div className="score-tile">
-        <p className="score-tile__empty">
-          {`Scanning... ${plural(state.sent, 'request')}`}
-        </p>
-        <Button onClick={stopScan}>{'Stop'}</Button>
       </div>
     );
   }
@@ -271,21 +242,12 @@ const AppComponent: React.FunctionComponent = () => {
     );
   }
 
-  if (state.phase === 'error') {
-    return (
-      <div className="score-tile">
-        <p className="score-tile__error">{`Scan failed: ${state.message}`}</p>
-        <Button onClick={runScanNow}>{'Try again'}</Button>
-      </div>
-    );
-  }
-
   return (
     <ReadyTile
       history={history}
       scanElsewhere={scanElsewhere}
       now={openedAt}
-      onScan={runScanNow}
+      reportHref={reportHref}
     />
   );
 };

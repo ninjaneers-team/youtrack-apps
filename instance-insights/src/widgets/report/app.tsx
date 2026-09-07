@@ -33,6 +33,10 @@ import {
   itemUrl,
   MOVEMENT_LABEL,
   movementDetail,
+  andList,
+  instanceOrigin,
+  shareText,
+  noMeasurementGroups,
   noMeasurementPhrase,
   NO_MEASUREMENT_HEADING,
   NO_MEASUREMENT_NOTE,
@@ -340,29 +344,6 @@ const AffectedItem: React.FunctionComponent<{
   );
 };
 
-/**
- * The instance to link to, or null when that cannot be established.
- *
- * Two independent facts have to agree. The widget's own base carries a scheme and a
- * host, but not the knowledge of whether that is the instance - in the development
- * entry it is a local dev server. The handler, running inside YouTrack, reports the
- * host the request arrived under. Only when both name the same host does the report
- * turn names into links; otherwise it prints them, which is what it did before.
- */
-function instanceOrigin(reportedHost: string | null): string | null {
-  if (reportedHost === null) {
-    return null;
-  }
-  try {
-    const base = new URL(document.baseURI);
-    const sameHost = base.host === reportedHost;
-    const web = base.protocol === 'http:' || base.protocol === 'https:';
-    return sameHost && web ? base.origin : null;
-  } catch {
-    return null;
-  }
-}
-
 const AffectedItems: React.FunctionComponent<{
   finding: Finding;
   origin: string | null;
@@ -385,6 +366,14 @@ const AffectedItems: React.FunctionComponent<{
   /* The kind of thing the check found, so the closed row already says what opening
      it will show. "Objects" is a word from the code, not from the instance. */
   const noun = finding.itemKind === undefined ? 'object' : ITEM_NOUN[finding.itemKind];
+  /* Whether the names in this table are links at all. Two kinds are not: an account,
+     which is a person, and anything the check found that has no page of its own. The
+     hint below said "opens in a new tab" for those as well, because it only asked
+     whether the report can build links in this instance - not whether these rows
+     carry one. */
+  const linked = items.some(
+    item => itemUrl(origin, finding.itemKind, item, finding.checkId) !== null,
+  );
   return (
     <details className="finding__items">
       <summary>
@@ -402,12 +391,12 @@ const AffectedItems: React.FunctionComponent<{
               {noun}
               {/* Said once for the whole column instead of on every row: the names
                   below are links, and they open a tab of their own. */}
-              {origin === null ? null : (
+              {linked ? (
                 <span className="finding__table-hint">
                   <Icon glyph={newWindowGlyph}/>
                   {' opens in a new tab'}
                 </span>
-              )}
+              ) : null}
             </th>
             <th scope="col">{'What was measured'}</th>
           </tr>
@@ -556,7 +545,7 @@ const ScoreTerms: React.FunctionComponent<{
         </dd>
         <dt>{'Affected'}</dt>
         <dd>
-          {`${percent(finding.ratio)} % of what it measured ` +
+          {`${shareText(finding.ratio)} of what it measured ` +
             `(ratio ${finding.ratio.toFixed(RATIO_DECIMALS)})`}
         </dd>
         {/* Marked objects change the share this check deducts for, so the arithmetic
@@ -565,7 +554,7 @@ const ScoreTerms: React.FunctionComponent<{
           <>
             <dt>{'Counted'}</dt>
             <dd>
-              {`${percent(ratio)} %, with ${plural(markedHere, noun)} marked as ` +
+              {`${shareText(ratio)}, with ${plural(markedHere, noun)} marked as ` +
                 `intentional (ratio ${ratio.toFixed(RATIO_DECIMALS)})`}
             </dd>
           </>
@@ -1136,10 +1125,10 @@ const NotRun: React.FunctionComponent<{outcomes: CheckOutcome[]}> = ({outcomes})
       <h2>{`${NO_MEASUREMENT_HEADING} (${notRun.length})`}</h2>
       <p className="not-run__note">{NO_MEASUREMENT_NOTE}</p>
       <ul className="not-run__list">
-        {notRun.map(o => (
-          <li key={o.checkId}>
-            {`${CHECK_BY_ID.get(o.checkId)?.title ?? o.checkId} - `}
-            {noMeasurementPhrase(o.status, o.reason)}
+        {noMeasurementGroups(outcomes, id => CHECK_BY_ID.get(id)?.title ?? id).map(group => (
+          <li key={group.phrase}>
+            {`${andList(group.titles)} - `}
+            {group.phrase}
           </li>
         ))}
       </ul>
@@ -1188,7 +1177,7 @@ function levelText(change: CheckChange): string {
   /* The share the check measured, not a fraction of its points: this list sits
      next to figures that are all slices of the hundred, and "3 % of its points"
      was a fifth scale nobody could add up. */
-  return change.after === 0 ? 'nothing found' : `${percent(change.after)} % affected`;
+  return change.after === 0 ? 'nothing found' : `${shareText(change.after)} affected`;
 }
 
 /** The checks behind a count, so the sentence above can be checked. */
@@ -1818,7 +1807,7 @@ const AppComponent: React.FunctionComponent = () => {
         setIgnored(new Set(state_.ignoredChecks));
         setMarkedItems(itemsByCheck(state_.ignoredItems));
         setHistory(state_.history);
-        setOrigin(instanceOrigin(state_.host));
+        setOrigin(instanceOrigin(state_.host, document.baseURI));
         setScanElsewhere(
           scanUnderWay(state_.scanStarted, state_.lastScan?.at, openedAt, state_.lastRun?.seconds),
         );

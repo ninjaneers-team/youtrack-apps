@@ -1,11 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { CHECKS } from '../src/checks/catalog.ts';
+import { CHECKS, MAX_ITEM_ID } from '../src/checks/catalog.ts';
 import { effectiveRatio, runChecks, runScan, score } from '../src/engine.ts';
 import { CATEGORY_WEIGHT, DEFAULT_CONFIG, severityFromRatio } from '../src/types.ts';
 import type { ScanContext } from '../src/types.ts';
-import { MockYouTrackClient, recordingClient, syntheticInstance } from './mock-client.ts';
+import {
+  MockYouTrackClient,
+  recordingClient,
+  syntheticData,
+  syntheticInstance,
+} from './mock-client.ts';
+import type { CountRule, MockData } from './mock-client.ts';
 
 const NOW = new Date('2026-08-11T00:00:00.000Z');
 
@@ -259,7 +265,7 @@ test('empty-field is skipped, not failed, when no project has enough issues', as
         id: 'f',
         name: 'Severity',
         fieldType: 'enum[1]',
-        instances: [{ id: 'i', projectShortName: 'TINY', bundleId: null }],
+        instances: [{ id: 'i', projectShortName: 'TINY', bundleId: null, required: false }],
       },
     ],
     users: [],
@@ -276,7 +282,7 @@ test('empty-field is skipped, not failed, when no project has enough issues', as
 });
 
 test('a finding names the check that made it, and its band follows its ratio', async () => {
-  /* Both were written out per check, fifteen times over. A finding under the wrong
+  /* Both were written out per check, fourteen times over. A finding under the wrong
      id would be marked as intentional in the wrong place and titled with another
      check's title, and neither the type nor a test would have said so. */
   const result = await runScan(CHECKS, contextOn(syntheticInstance(NOW)));
@@ -367,7 +373,9 @@ function instanceWithUnparseableFieldName(names: string[]): MockYouTrackClient {
       id: `f-${index}`,
       name,
       fieldType: 'enum[1]',
-      instances: [{ id: `i-${index}`, projectShortName: 'WEB', bundleId: null }],
+      instances: [
+        { id: `i-${index}`, projectShortName: 'WEB', bundleId: null, required: false },
+      ],
     })),
     users: [],
     boards: [],
@@ -376,7 +384,7 @@ function instanceWithUnparseableFieldName(names: string[]): MockYouTrackClient {
   });
 }
 
-test('a field name no search can reach is counted, not called empty', async () => {
+test('a field the instance did not answer for is counted, not called empty', async () => {
   const emptyField = CHECKS.find((c) => c.id === 'fields.empty-field');
   assert.ok(emptyField);
 
@@ -390,7 +398,8 @@ test('a field name no search can reach is counted, not called empty', async () =
   // One of two fields measured, and that one is empty: the ratio is 1, not 0.5.
   assert.equal(finding?.ratio, 1);
   assert.equal(
-    finding?.evidence.find((e) => e.label === 'Fields no search could reach')?.value,
+    finding?.evidence.find((e) => e.label === 'Fields the instance did not answer for')
+      ?.value,
     1,
   );
 });
@@ -405,7 +414,7 @@ test('when no field name can be reached the check is skipped, not scored', async
   );
 
   assert.equal(result.outcomes[0]?.status, 'skipped');
-  assert.match(result.outcomes[0]?.reason ?? '', /No search query could reach/);
+  assert.match(result.outcomes[0]?.reason ?? '', /answered for none of the/);
   assert.equal(result.overallScore, null);
 });
 
@@ -651,13 +660,21 @@ test('the checks whose objects cannot be marked one by one say why', async () =>
     .map((o) => o.checkId)
     .sort();
 
-  /* Two reasons remain, each a property of the check: the objects are accounts and
-     are never stored, or the check counts issues without listing them. A check
-     whose objects weigh differently from one another is not one of them - it
-     carries the weights on the items instead. Pinned so a new check is a
-     decision. */
+  /* Three reasons remain, each a property of the check: the objects are accounts
+     and are never stored, the check counts issues without listing them, or it
+     states a fact about the instance itself, which is not one of a population of
+     objects at all. A check whose objects weigh differently from one another is
+     none of those - it carries the weights on the items instead. Pinned so a new
+     check is a decision. */
   assert.deepEqual(withoutTotal, [
+    'fields.cloned-value-lists',
+    'fields.required-but-empty',
+    'governance.open-work-of-blocked-accounts',
+    'instance.address-only-works-here',
+    'instance.memory-below-database',
+    'instance.no-way-to-notify',
     'licensing.inactive-users',
+    'process.intake-vs-throughput',
     'process.stale-unresolved',
     'process.unassigned-unresolved',
   ]);
@@ -680,7 +697,9 @@ function fieldsNamed(names: readonly string[]): MockYouTrackClient {
       id: `f-${index}`,
       name,
       fieldType: 'enum[1]',
-      instances: [{ id: `i-${index}`, projectShortName: 'PRJ', bundleId: `b-${index}` }],
+      instances: [
+        { id: `i-${index}`, projectShortName: 'PRJ', bundleId: `b-${index}`, required: false },
+      ],
     })),
     users: [],
     boards: [],
@@ -731,4 +750,373 @@ test('a field named after something every object carries is still just a name', 
     (finding.items ?? []).map((i) => i.id),
     ['tostring'],
   );
+});
+
+// --- The checks added on top of the original catalog -------------------------
+
+/** The synthetic instance with one part of it replaced. */
+function instanceWith(patch: Partial<MockData>, rules: CountRule[] = []): MockYouTrackClient {
+  const base = syntheticData(NOW);
+  return new MockYouTrackClient({
+    ...base,
+    ...patch,
+    countRules: [...rules, ...base.countRules],
+  });
+}
+
+/** One check's outcome, so a test can read a skip and its reason as well. */
+async function outcomeOf(id: string, client: MockYouTrackClient) {
+  const check = CHECKS.find((c) => c.id === id);
+  assert.ok(check, `${id} is in the catalog`);
+  const { outcomes } = await runScan([check], contextOn(client));
+  const outcome = outcomes[0];
+  assert.ok(outcome);
+  return outcome;
+}
+
+/** One check's finding, for the tests that expect it to have measured something. */
+async function findingOf(id: string, client: MockYouTrackClient) {
+  const outcome = await outcomeOf(id, client);
+  assert.equal(outcome.status, 'finding', `${id}: ${outcome.reason ?? ''}`);
+  assert.ok(outcome.finding);
+  return outcome.finding;
+}
+
+test('a value list that no other list repeats is not a copy', async () => {
+  const outcome = await outcomeOf(
+    'fields.cloned-value-lists',
+    instanceWith({
+      valueBundles: [
+        { id: 'a', name: 'Types', values: ['Bug', 'Task'] },
+        { id: 'b', name: 'Severities', values: ['Blocker'] },
+      ],
+    }),
+  );
+  assert.equal(outcome.status, 'clean');
+});
+
+test('copies of one list count as copies, and one of them as the list', async () => {
+  const finding = await findingOf(
+    'fields.cloned-value-lists',
+    instanceWith({
+      valueBundles: [
+        { id: 'a', name: 'WEB: Types', values: ['Bug', 'Task'] },
+        { id: 'b', name: 'APP: Types', values: ['Task', 'Bug'] },
+        { id: 'c', name: 'LEGACY: Types', values: ['Bug', 'Task'] },
+        { id: 'd', name: 'Severities', values: ['Blocker'] },
+      ],
+    }),
+  );
+
+  // Three copies of one list and one list of its own: two of the four are
+  // redundant, and the order the values are listed in is not a difference.
+  assert.equal(finding.affected, 2);
+  assert.equal(finding.ratio, 0.5);
+  assert.equal(finding.items?.length, 1);
+  assert.match(finding.headline, /^2 of 4 value lists are a copy/);
+  assert.match(finding.items?.[0]?.detail ?? '', /^3 lists with these values$/);
+});
+
+test('a list holding nothing is not compared with the other empty ones', async () => {
+  const finding = await findingOf(
+    'fields.cloned-value-lists',
+    instanceWith({
+      valueBundles: [
+        { id: 'a', name: 'Types', values: ['Bug', 'Task'] },
+        { id: 'b', name: 'Types elsewhere', values: ['Bug', 'Task'] },
+        { id: 'c', name: 'Unfinished', values: [] },
+        { id: 'd', name: 'Also unfinished', values: [] },
+      ],
+    }),
+  );
+
+  // Two lists were compared, not four: an empty list is a field nobody finished
+  // setting up, and grouping the empty ones would report them as copies.
+  assert.match(finding.headline, /1 of 2 value lists is a copy/);
+});
+
+test('a required field is measured against the projects that require it', async () => {
+  const finding = await findingOf('fields.required-but-empty', syntheticInstance(NOW));
+
+  /* Priority is required in WEB, which holds 120 issues and carries a value in
+     100. State is required in APP, filled in all 80 of its issues - and stays in
+     the denominator, or the share would describe the fields with gaps rather than
+     the fields that carry a rule. */
+  assert.equal(finding.affected, 20);
+  assert.equal(finding.ratio, 20 / 200);
+  assert.equal(finding.items?.length, 1);
+  assert.match(finding.headline, /^20 of 200 issues in the projects that require a field/);
+  assert.match(finding.items?.[0]?.detail ?? '', /^20 of 120 issues in 1 project$/);
+});
+
+test('a required field costs one search, however many projects require it', async () => {
+  const { client, queries } = recordingClient(syntheticInstance(NOW));
+  const check = CHECKS.find((c) => c.id === 'fields.required-but-empty');
+  assert.ok(check);
+  await check.run(contextOn(client));
+
+  // Two required fields, two searches - each naming the projects that require it.
+  assert.equal(queries.length, 2);
+  assert.ok(queries.every((q) => /^project: \{.*\} and has: \{.*\}$/.test(q)), queries.join(' | '));
+});
+
+test('a field nobody demands a value for leaves the check nothing to measure', async () => {
+  const base = syntheticData(NOW);
+  const outcome = await outcomeOf(
+    'fields.required-but-empty',
+    instanceWith({
+      customFields: base.customFields.map((field) => ({
+        ...field,
+        instances: field.instances.map((i) => ({ ...i, required: false })),
+      })),
+    }),
+  );
+  assert.equal(outcome.status, 'skipped');
+  assert.match(outcome.reason ?? '', /requires a value/);
+});
+
+test('an instance that finishes more than arrives is not reported', async () => {
+  const outcome = await outcomeOf(
+    'process.intake-vs-throughput',
+    instanceWith({}, [
+      { match: /^created:/i, count: 60 },
+      { match: /^resolved date:/i, count: 90 },
+    ]),
+  );
+  assert.equal(outcome.status, 'clean');
+});
+
+test('the arrivals that stayed are the share, and both numbers are in the sentence', async () => {
+  const finding = await findingOf('process.intake-vs-throughput', syntheticInstance(NOW));
+
+  assert.equal(finding.ratio, 30 / 90);
+  assert.match(finding.headline, /took in 90 issues in the last 90 days and finished 60/);
+  // Absolute dates, so the same scan can be reproduced tomorrow.
+  assert.match(finding.query ?? '', /^created: \d{4}-\d{2}-\d{2} \.\. \d{4}-\d{2}-\d{2}$/);
+});
+
+test('a window with no arrivals is nothing to compare', async () => {
+  const outcome = await outcomeOf(
+    'process.intake-vs-throughput',
+    instanceWith({}, [
+      { match: /^created:/i, count: 0 },
+      { match: /^resolved date:/i, count: 5 },
+    ]),
+  );
+  assert.equal(outcome.status, 'skipped');
+  assert.match(outcome.reason ?? '', /No issue was created/);
+});
+
+const SETUP_CHECKS = [
+  'instance.memory-below-database',
+  'instance.no-way-to-notify',
+  'instance.address-only-works-here',
+];
+
+test('the setup checks step aside on an instance somebody else runs', async () => {
+  const hosted = instanceWith({
+    operations: {
+      selfHosted: false,
+      databaseBytes: null,
+      databaseText: null,
+      memoryBytes: null,
+      memoryText: null,
+    },
+  });
+
+  for (const id of SETUP_CHECKS) {
+    const outcome = await outcomeOf(id, hosted);
+    assert.equal(outcome.status, 'skipped', id);
+    assert.match(outcome.reason ?? '', /run for you/, id);
+  }
+});
+
+test('the setup checks step aside where they may not be read', async () => {
+  // A reader without permission to administer the instance and an instance with no
+  // such resource say the same thing to a check: there is nothing to measure. Only
+  // a positive answer switches these checks on.
+  const silent = instanceWith({ operations: null, settings: null });
+
+  for (const id of SETUP_CHECKS) {
+    const outcome = await outcomeOf(id, silent);
+    assert.equal(outcome.status, 'skipped', id);
+    assert.match(outcome.reason ?? '', /permission to administer it/, id);
+  }
+});
+
+test('the database and the memory are named as the instance worded them', async () => {
+  const finding = await findingOf('instance.memory-below-database', syntheticInstance(NOW));
+
+  assert.equal(finding.ratio, 0.5);
+  assert.match(finding.headline, /database is 8\.0 GB and YouTrack has 4\.0 GB of memory/);
+});
+
+test('memory larger than the database is nothing to report', async () => {
+  const outcome = await outcomeOf(
+    'instance.memory-below-database',
+    instanceWith({
+      operations: {
+        selfHosted: true,
+        databaseBytes: 1_000,
+        databaseText: '1.0 KB',
+        memoryBytes: 2_000,
+        memoryText: '2.0 KB',
+      },
+    }),
+  );
+  assert.equal(outcome.status, 'clean');
+});
+
+test('both ways out of the instance are missing, and the sentence says both', async () => {
+  const finding = await findingOf('instance.no-way-to-notify', syntheticInstance(NOW));
+
+  assert.equal(finding.ratio, 1);
+  assert.match(finding.headline, /Email notifications are switched off/);
+  assert.match(finding.headline, /No address is set for what this instance has to say/);
+});
+
+test('a channel the instance did not state is not a channel that is missing', async () => {
+  const finding = await findingOf(
+    'instance.no-way-to-notify',
+    instanceWith({
+      settings: {
+        baseUrl: 'https://youtrack.example.com',
+        administratorEmail: null,
+        // Not answered, so nothing is known about it - and an unknown is not a
+        // finding on either side of the share.
+        mailEnabled: null,
+      },
+    }),
+  );
+
+  assert.equal(finding.ratio, 1, 'one channel was readable, and it is missing');
+  assert.ok(!/Email notifications/.test(finding.headline));
+});
+
+test('an instance that can reach people is not reported', async () => {
+  const outcome = await outcomeOf(
+    'instance.no-way-to-notify',
+    instanceWith({
+      settings: {
+        baseUrl: 'https://youtrack.example.com',
+        administratorEmail: 'admin@example.com',
+        mailEnabled: true,
+      },
+    }),
+  );
+  assert.equal(outcome.status, 'clean');
+});
+
+test('an address that only resolves on the server is named in full', async () => {
+  const finding = await findingOf('instance.address-only-works-here', syntheticInstance(NOW));
+  assert.match(finding.headline, /built from http:\/\/localhost:8080/);
+});
+
+test('an address that resolves anywhere else is left alone', async () => {
+  for (const baseUrl of ['https://youtrack.example.com', 'https://tracker.intranet:8443']) {
+    const outcome = await outcomeOf(
+      'instance.address-only-works-here',
+      instanceWith({
+        settings: { baseUrl, administratorEmail: 'admin@example.com', mailEnabled: true },
+      }),
+    );
+    assert.equal(outcome.status, 'clean', baseUrl);
+  }
+});
+
+test('open work on a blocked account is measured against every open issue', async () => {
+  const finding = await findingOf(
+    'governance.open-work-of-blocked-accounts',
+    syntheticInstance(NOW),
+  );
+
+  assert.equal(finding.affected, 12);
+  assert.equal(finding.ratio, 12 / 200);
+  assert.match(finding.headline, /^12 of 200 open issues are assigned to an account/);
+  assert.equal(finding.items?.length, 1);
+  assert.equal(finding.items?.[0]?.detail, '12 open issues');
+  // The population is the open issues, so an account taken out of the decision
+  // takes its issues out of the numerator and leaves the denominator alone.
+  assert.equal(finding.items?.[0]?.measured, 0);
+});
+
+test('a blocked account that holds no open work is not named', async () => {
+  const outcome = await outcomeOf(
+    'governance.open-work-of-blocked-accounts',
+    instanceWith({}, [{ match: /Assignee:/i, count: 0 }]),
+  );
+  assert.equal(outcome.status, 'clean');
+});
+
+test('a board is named for its owner having no access, and never names the owner', async () => {
+  const finding = await findingOf(
+    'governance.boards-owned-by-blocked-accounts',
+    syntheticInstance(NOW),
+  );
+
+  assert.equal(finding.total, 3);
+  assert.equal(finding.items?.length, 1);
+  assert.equal(finding.items?.[0]?.label, 'Release LEGACY');
+  // No login travels with the row: this finding is about configuration, and a
+  // login is what must not end up in what gets stored.
+  assert.equal(finding.items?.[0]?.detail, undefined);
+});
+
+test('an owner the instance did not name is not an owner without access', async () => {
+  const base = syntheticData(NOW);
+  const outcome = await outcomeOf(
+    'governance.boards-owned-by-blocked-accounts',
+    instanceWith({ boards: base.boards.map((board) => ({ ...board, owner: null })) }),
+  );
+  assert.equal(outcome.status, 'clean');
+});
+
+test('no identifier a check builds is longer than the handler accepts', async () => {
+  /* An identifier past the bound is refused when a reader marks the object, which
+     leaves a control that does nothing. The bound belongs to the handler; this
+     holds every check against it, including the ones that build an id out of names
+     from the instance rather than reading one. */
+  const { outcomes } = await runScan(CHECKS, contextOn(syntheticInstance(NOW)));
+
+  for (const outcome of outcomes) {
+    for (const item of outcome.finding?.items ?? []) {
+      assert.ok(
+        item.id.length > 0 && item.id.length <= MAX_ITEM_ID,
+        `${outcome.checkId}: an id of ${item.id.length} characters`,
+      );
+    }
+  }
+});
+
+test('a value list is named by the field that offers it', async () => {
+  /* "Bug, Task, Feature" is not something a reader can act on until they know it is
+     the Type field. The connection is in the field list, which other checks read
+     anyway, so naming it costs no request. */
+  const base = syntheticData(NOW);
+  const finding = await findingOf(
+    'fields.cloned-value-lists',
+    new MockYouTrackClient({
+      ...base,
+      customFields: [
+        {
+          id: 'f-type',
+          name: 'Type',
+          fieldType: 'enum[1]',
+          instances: [
+            { id: 'i-web', projectShortName: 'WEB', bundleId: 'v-1', required: false },
+            { id: 'i-app', projectShortName: 'APP', bundleId: 'v-2', required: false },
+          ],
+        },
+      ],
+      valueBundles: [
+        { id: 'v-1', name: 'WEB: Types', values: ['Bug', 'Task'] },
+        { id: 'v-2', name: 'APP: Types', values: ['Task', 'Bug'] },
+        { id: 'v-3', name: 'Nobody uses this', values: ['Blocker'] },
+        { id: 'v-4', name: 'Nor this', values: ['Blocker'] },
+      ],
+    }),
+  );
+
+  const labels = (finding.items ?? []).map((item) => item.label).sort();
+  assert.deepEqual(labels, ['Blocker', 'Type: Bug, Task']);
 });

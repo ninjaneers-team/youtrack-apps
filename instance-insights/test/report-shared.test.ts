@@ -4,17 +4,20 @@ import assert from 'node:assert/strict';
 import { CHECKS } from '../src/checks/catalog.ts';
 import { runChecks, score } from '../src/engine.ts';
 import {
+  ITEM_NOUN,
+  categoryPoints,
   dateText,
   decisionEffect,
+  duration,
+  instanceOrigin,
   issueSearchUrl,
   itemUrl,
-  ITEM_NOUN,
-  oneDecimal,
-  duration,
   movementDetail,
   movementPhrase,
+  oneDecimal,
+  reportPageUrl,
   scanFateNote,
-  categoryPoints,
+  shareText,
   timestampText,
 } from '../src/report-shared.ts';
 import { trendSentence } from '../src/report-shared.ts';
@@ -111,7 +114,8 @@ test('every kind of object a check can list has a name and a way there', () => {
     const url = itemUrl(origin, kind as keyof typeof ITEM_NOUN, {id: 'x', label: 'X'}, 'any.check');
     /* An account is the one kind a report never links to. Everything else does, and
        a kind added without a case in itemUrl would silently print plain text where
-       the page had a link the day before. */
+       the page had a link the day before - and the column heading would go on
+       promising one. */
     if (kind === 'account') {
       assert.equal(url, null, 'an account is named, never linked to');
     } else {
@@ -126,7 +130,12 @@ test('a name carrying half a character still leads somewhere', () => {
      while a link is built, it would take the whole report down over one name. */
   const half = 'Team \ud83d';
   assert.equal(
-    itemUrl('https://yt.example', 'board', { id: 'a-1', label: half, target: half }, 'process.aging-wip'),
+    itemUrl(
+      'https://yt.example',
+      'board',
+      { id: 'a-1', label: half, target: half },
+      'process.overgrown-boards',
+    ),
     'https://yt.example/agiles/Team%20',
   );
   assert.equal(
@@ -208,4 +217,44 @@ test('a scan states what it cost in minutes as well as seconds', () => {
   // Rounded up to the minute, so it is not printed as "60 s".
   assert.equal(duration(59.6), '1:00');
   assert.equal(duration(605), '10:05');
+});
+
+test('a widget links into the instance only when two facts agree', () => {
+  const host = 'youtrack.example.com';
+  /* The base says where this page came from, the handler says which host the
+     instance answered under. Both, because a development entry serves the same
+     widget from a local server, and a link built there leads nowhere. */
+  assert.equal(
+    instanceOrigin(host, `https://${host}/app/instance-insights/report`),
+    `https://${host}`,
+  );
+  assert.equal(instanceOrigin(host, 'http://localhost:5173/dev/'), null, 'another host');
+  assert.equal(instanceOrigin(null, `https://${host}/app/x`), null, 'the handler said nothing');
+  assert.equal(instanceOrigin(host, 'not a url'), null, 'a base nobody can parse');
+  assert.equal(
+    instanceOrigin(host, `file://${host}/somewhere`),
+    null,
+    'a scheme a link cannot use',
+  );
+});
+
+test('the report page is where the instance serves it', () => {
+  // Measured in the address bar of a running instance, not derived from a rule.
+  assert.equal(
+    reportPageUrl('https://youtrack.example.com'),
+    'https://youtrack.example.com/app/instance-insights/report',
+  );
+  assert.equal(reportPageUrl(null), null, 'no instance, no link');
+});
+
+test('a share too small to round to a percent still reads as a share', () => {
+  /* Measured on a live instance: a required field was missing on a handful of
+     issues among tens of thousands, and the line read "0 % affected" one row above
+     another reading "nothing found". Two different statements in the same words. */
+  assert.equal(shareText(0.001), 'under 1 %');
+  assert.equal(shareText(0.004), 'under 1 %');
+  assert.equal(shareText(0), '0 %', 'a measured nothing is nothing, not "under 1 %"');
+  assert.equal(shareText(0.006), '1 %');
+  assert.equal(shareText(0.6), '60 %');
+  assert.equal(shareText(null), 'not measured', 'no measurement is not a share of zero');
 });

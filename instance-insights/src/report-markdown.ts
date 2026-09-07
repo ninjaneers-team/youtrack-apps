@@ -29,7 +29,9 @@ import {
   METHOD_NOTE,
   WEIGHT_REASON,
   MOVEMENT_LABEL,
-  noMeasurementPhrase,
+  andList,
+  noMeasurementGroups,
+  shareText,
   NO_MEASUREMENT_HEADING,
   NO_MEASUREMENT_NOTE,
   scoreText,
@@ -93,6 +95,7 @@ export function reportToMarkdown({
 }: MarkdownInput): string {
   const origin = instanceUrl ?? null;
   const byId = new Map(checks.map((c) => [c.id, c]));
+  const idToTitle = (id: string): string => byId.get(id)?.title ?? id;
   const lines: string[] = [];
 
   lines.push('# Instance Insights');
@@ -209,11 +212,10 @@ export function reportToMarkdown({
     lines.push('', `## ${NO_MEASUREMENT_HEADING}`, '');
     lines.push(NO_MEASUREMENT_NOTE);
     lines.push('');
-    for (const outcome of notRun) {
-      const title = byId.get(outcome.checkId)?.title ?? outcome.checkId;
-      // The reason is what makes a moved score explainable to a reader who only
-      // has the file.
-      lines.push(`- ${title} - ${noMeasurementPhrase(outcome.status, outcome.reason)}`);
+    // The reason is what makes a moved score explainable to a reader who only has
+    // the file, and checks that share one reason share one line.
+    for (const group of noMeasurementGroups(result.outcomes, idToTitle)) {
+      lines.push(`- ${andList(group.titles)} - ${group.phrase}`);
     }
   }
 
@@ -304,7 +306,7 @@ function findingSection(
     lines.push(
       '',
       `*Points:* worth ${worthPhrase(points)} of the hundred, ` +
-        `${percent(finding.ratio)} % affected ` +
+        `${shareText(finding.ratio)} affected ` +
         `(ratio ${finding.ratio.toFixed(RATIO_DECIMALS)})` +
         (markedHere > 0
           ? `, ${plural(markedHere, markedNoun)} marked as intentional so ` +

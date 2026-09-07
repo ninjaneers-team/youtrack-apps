@@ -86,6 +86,49 @@ const MINUTE_END = 16;
 
 
 /**
+ * The name YouTrack knows this app under, and the widget that holds the report.
+ *
+ * A page of the app is served at `<instance>/app/<app>/<widget>` - measured in the
+ * address bar of a running instance (2026.2), not derived from a rule. Both names
+ * come from the manifest, and `test/repo-layout.test.ts` holds them against it, so
+ * a renamed widget cannot leave a link pointing at nothing.
+ */
+export const APP_NAME = 'instance-insights';
+export const REPORT_WIDGET = 'report';
+
+/** The report page of this app in this instance, or null without an instance. */
+export function reportPageUrl(origin: string | null): string | null {
+  return origin === null ? null : `${origin}/app/${APP_NAME}/${REPORT_WIDGET}`;
+}
+
+/**
+ * The instance to link to, or null when that cannot be established.
+ *
+ * Two independent facts have to agree. A widget's own base carries a scheme and a
+ * host, but not the knowledge of whether that is the instance - in the development
+ * entry it is a local dev server. The handler, running inside YouTrack, reports the
+ * host the request arrived under. Only when both name the same host does a widget
+ * turn names into links; otherwise it prints them.
+ *
+ * The base arrives as an argument rather than being read from `document` here: this
+ * module is shared with the exports, which run where there is no document, and a
+ * pure function is one a test can put a URL into.
+ */
+export function instanceOrigin(reportedHost: string | null, baseUri: string): string | null {
+  if (reportedHost === null) {
+    return null;
+  }
+  try {
+    const base = new URL(baseUri);
+    const sameHost = base.host === reportedHost;
+    const web = base.protocol === 'http:' || base.protocol === 'https:';
+    return sameHost && web ? base.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * What a check's objects are called, in the words of someone who has not read the
  * code: "Affected projects (35)" says what will be in the list, where "Affected
  * objects (35)" makes the reader open it to find out.
@@ -95,6 +138,7 @@ export const ITEM_NOUN: Record<ItemKind, string> = {
   board: 'board',
   field: 'field',
   'field-group': 'group of fields',
+  'value-list': 'value list',
   group: 'user group',
   account: 'account',
 };
@@ -106,14 +150,24 @@ export const SEVERITY_LABEL: Record<Severity, string> = {
   low: 'Low',
 };
 
+/** Half a percent: below it a share rounds to zero and reads as nothing. */
+const ROUNDS_TO_NOTHING = 0.005;
+
 /**
  * The share a check measured, or that it did not measure one.
  *
- * A check that did not run has no share, and "0 %" would read as a check that
- * found nothing - the opposite statement.
+ * Two shares would otherwise read as nothing without being nothing. A check that
+ * did not run has no share at all, and "0 %" would say it found nothing - the
+ * opposite statement. And a check that found a handful of issues among tens of
+ * thousands measures a share that rounds to zero: on a live instance a required
+ * field was missing on a few issues and the line read "0 % affected", one row above
+ * another that read "nothing found". Two different statements, the same words.
  */
-function shareText(ratio: number | null): string {
-  return ratio === null ? 'not measured' : `${percent(ratio)} %`;
+export function shareText(ratio: number | null): string {
+  if (ratio === null) {
+    return 'not measured';
+  }
+  return ratio > 0 && ratio < ROUNDS_TO_NOTHING ? 'under 1 %' : `${percent(ratio)} %`;
 }
 
 /**
@@ -308,7 +362,14 @@ export const CATEGORY_WEIGHTS_NOTE = (() => {
   const categories = Object.keys(CATEGORY_WEIGHT) as Category[];
   const total = categories.reduce((sum, c) => sum + CATEGORY_WEIGHT[c], 0);
   const shares = categories
-    .map(c => `${CATEGORY_LABEL[c].toLowerCase()} ${(CATEGORY_WEIGHT[c] / total) * PERCENT}`)
+    .map(
+      c =>
+        `${CATEGORY_LABEL[c].toLowerCase()} ` +
+        // The same one decimal every other figure in the report carries: the
+        // shares of an odd number of weights do not come out whole, and a share
+        // written to fifteen digits reads as a defect rather than as a division.
+        scoreText((CATEGORY_WEIGHT[c] / total) * PERCENT),
+    )
     .join(', ');
   return (
     `Of the hundred: ${shares}. A category that could not be measured at all ` +
@@ -330,7 +391,11 @@ export const WEIGHT_REASON =
   'most. Fields, process and governance weigh the same - each of them decides ' +
   'whether the work in this instance can be found, trusted and owned. The ' +
   'portfolio weighs least, because a forgotten project costs attention rather than ' +
-  'money. Inside a category the same idea sets the shares: a check weighs more the ' +
+  'money. The setup of the instance weighs with the middle three: a server that has ' +
+  'outgrown its memory, or one that cannot send an email, undoes the work the other ' +
+  'categories describe - and where the server is not yours to look after, those ' +
+  'checks step aside and leave their points to the rest. ' +
+  'Inside a category the same idea sets the shares: a check weighs more the ' +
   'more it costs to leave alone. The numbers are a judgement, not a law - and every ' +
   'step from a measurement to a point is in this report, so a reader who would ' +
   'weigh it differently can still follow how this score came about.';
@@ -353,7 +418,11 @@ export function noMeasurementPhrase(status: string, reason?: string): string {
   if (status === 'failed') {
     return reason ? `the check hit an error: ${reason}` : 'the check hit an error';
   }
-  return reason ?? 'nothing in this instance to measure';
+  /* Without a reason, nothing about the cause is known - and "nothing in this
+     instance to measure" would invent one. On a hosted instance there is plenty to
+     measure; it is somebody else's server. The same words the category table uses
+     for a category that measured nothing. */
+  return reason ?? 'nothing measured here';
 }
 
 // --- What a decision did to the score ----------------------------------------
@@ -434,13 +503,17 @@ export function decisionSentence(effect: DecisionEffect): string {
   }
   const subject = what.length > 0 ? what.join(' and ') : 'Some of this';
   const verb = agree(effect.findings + effect.items, 'is', 'are');
-  const points = pluralNoun(effect.points, 'point');
+  /* The noun belongs to the total, not to the part of it under a decision: "1 of
+     those 56.1 point" was the reading that came out when the part happened to be
+     exactly one. The verb follows the part, which is what the sentence is about. */
+  const points = pluralNoun(effect.reported, 'point');
+  const rest = agree(effect.points, 'rests', 'rest');
   /* Both numbers in one sentence, because neither explains itself as a figure. A
      line reading "as measured 67.8" beside the score was shorter and meant nothing
      to anyone who did not already know the concept. */
   return (
     `${subject} ${verb} marked as intentional, so ${effect.points} of those ` +
-    `${effect.reported} ${points} rest on that decision rather than on a ` +
+    `${effect.reported} ${points} ${rest} on that decision rather than on a ` +
     `measurement. Measured, this scan is ${effect.asMeasured} out of 100. Nothing ` +
     'in the instance was measured again for it.'
   );
@@ -614,6 +687,10 @@ export function itemUrl(
       return `${origin}${FIELDS_PAGE}`;
     case 'group':
       return `${origin}/admin/groups/${encodePart(item.target ?? item.id)}`;
+    // A list of values is administered on the same page as the field that offers
+    // it, and the row names that field.
+    case 'value-list':
+      return `${origin}${FIELDS_PAGE}`;
     case 'account':
       /* An account is named in the app and counted in an export, and neither links
          to a person. */
@@ -638,4 +715,46 @@ export function byImpact(findings: readonly Finding[]): Finding[] {
 /** The checks that came back without a number, in the order they ran. */
 export function withoutMeasurement(outcomes: readonly CheckOutcome[]): CheckOutcome[] {
   return outcomes.filter(o => o.status === 'skipped' || o.status === 'failed');
+}
+
+/** Several checks that came back for the same reason, named together. */
+export interface NoMeasurementGroup {
+  titles: string[];
+  phrase: string;
+}
+
+/**
+ * The checks without a measurement, gathered by the reason they give.
+ *
+ * Three checks look at the server the instance runs on, and on an instance run by
+ * somebody else all three step aside with the same sentence. Listed one per line
+ * that reads as three things having gone wrong; listed as one line naming three
+ * checks it reads as what it is - a part of the report that does not apply here.
+ * The order the scan produced them in is kept, so a reader who looks for one check
+ * finds it where the catalog put it.
+ */
+export function noMeasurementGroups(
+  outcomes: readonly CheckOutcome[],
+  titleOf: (checkId: string) => string,
+): NoMeasurementGroup[] {
+  const groups: NoMeasurementGroup[] = [];
+  for (const outcome of withoutMeasurement(outcomes)) {
+    const phrase = noMeasurementPhrase(outcome.status, outcome.reason);
+    const title = titleOf(outcome.checkId);
+    const seen = groups.find(group => group.phrase === phrase);
+    if (seen) {
+      seen.titles.push(title);
+    } else {
+      groups.push({ titles: [title], phrase });
+    }
+  }
+  return groups;
+}
+
+/** Names in a row, as a sentence lists them: "one, two and three". */
+export function andList(words: readonly string[]): string {
+  if (words.length < 2) {
+    return words[0] ?? '';
+  }
+  return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1] ?? ''}`;
 }

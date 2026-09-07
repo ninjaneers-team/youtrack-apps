@@ -22,6 +22,7 @@ test('category weights are pinned, so a change is deliberate', () => {
     process: 2,
     governance: 2,
     portfolio: 1,
+    instance: 2,
   });
 });
 
@@ -34,6 +35,7 @@ test('default thresholds are pinned, so a change is deliberate', () => {
   assert.equal(DEFAULT_CONFIG.unassignedThreshold, 0.2);
   assert.equal(DEFAULT_CONFIG.maxBoardColumns, 7);
   assert.equal(DEFAULT_CONFIG.minProjectIssues, 10);
+  assert.equal(DEFAULT_CONFIG.flowWindowDays, 90);
 });
 
 test('severity factors decrease strictly and stay within 0..1', () => {

@@ -18,10 +18,13 @@ import type {
   AgileBoard,
   CountResult,
   CustomField,
+  InstanceOperations,
+  InstanceSettings,
   Project,
   StateBundle,
   User,
   UserGroup,
+  ValueBundle,
   YouTrackClient,
 } from './types.ts';
 
@@ -35,6 +38,10 @@ const PATHS = {
   agiles: 'agiles',
   groups: 'groups',
   stateBundles: 'admin/customFieldSettings/bundles/state',
+  valueBundles: 'admin/customFieldSettings/bundles/enum',
+  telemetry: 'admin/telemetry',
+  notificationSettings: 'admin/globalSettings/notificationSettings',
+  systemSettings: 'admin/globalSettings/systemSettings',
 } as const;
 
 /** `fields=` selectors. Requesting a field YouTrack does not know is an error. */
@@ -43,7 +50,8 @@ const FIELDS = {
   /* Only the bundle's id per instance, not its values: a field lives in every
      project it is attached to, so asking for the values here would repeat them per
      project. The values come from the bundle list instead, in one request. */
-  customField: 'id,name,fieldType(id),instances(id,project(shortName),bundle(id))',
+  customField:
+    'id,name,fieldType(id),instances(id,project(shortName),bundle(id),canBeEmpty)',
   // No last-login time here: YouTrack REST drops `lastAccessTime` silently, the
   // same way it drops an invented name, and rejects it as `orderBy` with 400. Only
   // Hub carries it, and a full-page widget cannot reach Hub, so inactive-users
@@ -52,11 +60,26 @@ const FIELDS = {
   // The column field and its values per column are what makes a board's own
   // definition of work-in-progress queryable (`{State}: {In Progress}`).
   agile:
-    'id,name,projects(shortName),sprintsSettings(disableSprints),sprints(name),' +
+    'id,name,owner(login,banned),projects(shortName),' +
+    'sprintsSettings(disableSprints),sprints(name),' +
     'columnSettings(field(name),columns(presentation,isResolved,' +
     'wipLimit(min,max),fieldValues(name)))',
   group: 'id,name,usersCount',
   stateBundle: 'id,name,values(name,isResolved)',
+  valueBundle: 'id,name,values(name)',
+  /* The path on the filesystem is what tells the two editions apart: JetBrains
+     documents that a telemetry attribute the edition does not support comes back
+     empty, and a hosted instance has no filesystem of its own to name. Read in the
+     same request as the two sizes, so the answer costs one request for both the
+     question "is this instance run by its own administrator" and the measurement.
+
+     Confirmed on both sides: a self-managed instance answers with a path and the
+     two sizes, a hosted one answers the same resource without a path. Nothing is
+     concluded from an empty answer either way - the checks built on this only ever
+     switch themselves on for a path that arrived. */
+  telemetry: 'databaseLocation,databaseSize,availableMemory',
+  notificationSettings: 'emailSettings(isEnabled)',
+  systemSettings: 'baseUrl,administratorEmail',
 } as const;
 
 /**
@@ -183,6 +206,14 @@ const REQUEST_TIMEOUT_MS = 30_000;
  * waiting out, and nothing else is - a 400 or a 404 answers the same way next time.
  */
 const RETRY_STATUS = [429, 503];
+
+/**
+ * The answers that mean "not for you" or "not here" rather than "something broke".
+ *
+ * Only the administration resources are read this way, and only these statuses
+ * make a check step aside instead of failing.
+ */
+const REFUSED_STATUS = [401, 403, 404];
 const RATE_LIMIT_RETRIES = 3;
 const RATE_LIMIT_BACKOFF_MS = 2_000;
 
@@ -227,6 +258,7 @@ interface RawInstance {
   id: string;
   project?: { shortName: string } | null;
   bundle?: { id?: string } | null;
+  canBeEmpty?: boolean;
 }
 interface RawCustomField {
   id: string;
@@ -250,6 +282,7 @@ interface RawColumn {
 interface RawAgile {
   id: string;
   name: string;
+  owner?: { login?: string; banned?: boolean } | null;
   projects?: { shortName?: string }[] | null;
   sprintsSettings?: { disableSprints?: boolean } | null;
   sprints?: { name?: string }[] | null;
@@ -271,6 +304,27 @@ interface RawStateBundle {
   id: string;
   name?: string;
   values?: { name?: string; isResolved?: boolean }[] | null;
+}
+
+interface RawValueBundle {
+  id: string;
+  name?: string;
+  values?: { name?: string }[] | null;
+}
+
+interface RawTelemetry {
+  databaseLocation?: string | null;
+  databaseSize?: string | null;
+  availableMemory?: string | null;
+}
+
+interface RawNotificationSettings {
+  emailSettings?: { isEnabled?: boolean } | null;
+}
+
+interface RawSystemSettings {
+  baseUrl?: string | null;
+  administratorEmail?: string | null;
 }
 
 /**
@@ -295,6 +349,41 @@ function listOf<T>(path: string, answer: unknown): T[] {
     }
   }
   return answer as T[];
+}
+
+/** The answer as the single object it has to be, for the resources that are one. */
+function objectOf<T>(path: string, answer: unknown): T {
+  if (typeof answer !== 'object' || answer === null || Array.isArray(answer)) {
+    throw new Error(`${path} answered ${shapeOf(answer)} where one object belongs`);
+  }
+  return answer as T;
+}
+
+const BYTES_PER_STEP = 1024;
+
+/** Powers of 1024, in the order the suffixes step through them. */
+const SIZE_SUFFIXES = ['b', 'kb', 'mb', 'gb', 'tb'];
+
+/**
+ * A size the way telemetry words it - "25.4 MB" - as a number of bytes.
+ *
+ * The endpoint answers in prose rather than in numbers, so the unit has to be read
+ * back. Whether the instance means 1024 or 1000 per step is not stated anywhere,
+ * and it does not matter for the one thing these numbers are used for: comparing
+ * two of them that came from the same answer in the same wording.
+ */
+function bytesOf(said: unknown): number | null {
+  if (typeof said !== 'string') {
+    return null;
+  }
+  const parsed = /^\s*([0-9]+(?:\.[0-9]+)?)\s*([kmgt]?b)\s*$/i.exec(said);
+  const amount = parsed?.[1];
+  const suffix = parsed?.[2]?.toLowerCase();
+  if (amount === undefined || suffix === undefined) {
+    return null;
+  }
+  const step = SIZE_SUFFIXES.indexOf(suffix);
+  return step < 0 ? null : Number(amount) * BYTES_PER_STEP ** step;
 }
 
 /**
@@ -486,6 +575,9 @@ export class YouTrackApiClient implements YouTrackClient {
   private agilesCache?: Promise<AgileBoard[]>;
   private groupsCache?: Promise<UserGroup[]>;
   private stateBundlesCache?: Promise<StateBundle[]>;
+  private valueBundlesCache?: Promise<ValueBundle[]>;
+  private operationsCache?: Promise<InstanceOperations | null>;
+  private settingsCache?: Promise<InstanceSettings | null>;
 
   /**
    * Settles when the scan is stopped, and never when nothing can stop it.
@@ -901,6 +993,18 @@ export class YouTrackApiClient implements YouTrackClient {
     return (this.stateBundlesCache ??= this.fetchStateBundles());
   }
 
+  listValueBundles(): Promise<ValueBundle[]> {
+    return (this.valueBundlesCache ??= this.fetchValueBundles());
+  }
+
+  readOperations(): Promise<InstanceOperations | null> {
+    return (this.operationsCache ??= this.fetchOperations());
+  }
+
+  readSettings(): Promise<InstanceSettings | null> {
+    return (this.settingsCache ??= this.fetchSettings());
+  }
+
   private async fetchProjects(): Promise<Project[]> {
     const raw = await this.requestAll<RawProject>(PATHS.projects, FIELDS.project);
     /* Archived projects are not counted: search rejects one as a scope, and a single
@@ -938,6 +1042,11 @@ export class YouTrackApiClient implements YouTrackClient {
           id: i.id,
           projectShortName: i.project.shortName,
           bundleId: i.bundle?.id ?? null,
+          /* Only an explicit "may be empty: no" makes a field required. An
+             attribute the instance did not send arrives as undefined, and reading
+             that as a rule would invent one - the finding would then be about a
+             requirement nobody made. */
+          required: i.canBeEmpty === false,
         })),
     }));
   }
@@ -959,6 +1068,9 @@ export class YouTrackApiClient implements YouTrackClient {
     return raw.map(b => ({
       id: b.id,
       name: b.name,
+      owner: b.owner?.login
+        ? { login: b.owner.login, banned: b.owner.banned ?? false }
+        : null,
       // A board with no sprint settings at all plans in sprints, which is what
       // YouTrack sets up by default.
       usesSprints: !(b.sprintsSettings?.disableSprints ?? false),
@@ -995,5 +1107,70 @@ export class YouTrackApiClient implements YouTrackClient {
   private async fetchGroups(): Promise<UserGroup[]> {
     const raw = await this.requestAll<RawGroup>(PATHS.groups, FIELDS.group);
     return raw.map(g => ({ id: g.id, name: g.name, usersCount: g.usersCount ?? 0 }));
+  }
+
+  private async fetchValueBundles(): Promise<ValueBundle[]> {
+    const raw = await this.requestAll<RawValueBundle>(PATHS.valueBundles, FIELDS.valueBundle);
+    return raw.map(b => ({
+      id: b.id,
+      name: b.name ?? b.id,
+      values: (b.values ?? [])
+        .map(v => v.name)
+        .filter((name): name is string => Boolean(name)),
+    }));
+  }
+
+  private async fetchOperations(): Promise<InstanceOperations | null> {
+    const raw = await this.readOne<RawTelemetry>(PATHS.telemetry, FIELDS.telemetry);
+    if (raw === null) {
+      return null;
+    }
+    return {
+      // A path, not merely a truthy answer: an empty string is what an attribute
+      // the edition does not carry looks like once it has passed through JSON.
+      selfHosted: typeof raw.databaseLocation === 'string' && raw.databaseLocation.length > 0,
+      databaseBytes: bytesOf(raw.databaseSize),
+      databaseText: raw.databaseSize ?? null,
+      memoryBytes: bytesOf(raw.availableMemory),
+      memoryText: raw.availableMemory ?? null,
+    };
+  }
+
+  private async fetchSettings(): Promise<InstanceSettings | null> {
+    const mail = await this.readOne<RawNotificationSettings>(
+      PATHS.notificationSettings,
+      FIELDS.notificationSettings,
+    );
+    const system = await this.readOne<RawSystemSettings>(
+      PATHS.systemSettings,
+      FIELDS.systemSettings,
+    );
+    if (mail === null && system === null) {
+      return null;
+    }
+    return {
+      baseUrl: system?.baseUrl ?? null,
+      administratorEmail: system?.administratorEmail ?? null,
+      mailEnabled: mail?.emailSettings?.isEnabled ?? null,
+    };
+  }
+
+  /**
+   * One resource, or null where the instance will not hand it over.
+   *
+   * A refusal is an answer here rather than a failure: these resources belong to
+   * the administration of the instance, and both a reader without those
+   * permissions and an edition without that resource say the same thing to a check
+   * - there is nothing to measure - while a scan of everything else is unaffected.
+   */
+  private async readOne<T>(path: string, fields: string): Promise<T | null> {
+    try {
+      return objectOf<T>(path, await this.request<unknown>(path, { query: { fields } }));
+    } catch (err) {
+      if (REFUSED_STATUS.includes(statusOf(err))) {
+        return null;
+      }
+      throw err;
+    }
   }
 }

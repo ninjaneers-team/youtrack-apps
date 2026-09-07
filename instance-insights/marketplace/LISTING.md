@@ -6,10 +6,10 @@ Instance Insights
 
 ## Description
 
-Scores your YouTrack instance out of 100, from fifteen read-only checks across its
-configuration and its process: licences nobody uses, projects without an owner,
-custom fields that mean the same thing under three different names, work that
-stopped moving.
+Scores your YouTrack instance out of 100, from twenty-two read-only checks across
+its configuration and its process: licences nobody uses, projects without an
+owner, custom fields that mean the same thing under three different names, open
+work nobody has touched in months.
 
 - The score breaks down per category and per finding, with the arithmetic beside it,
   so every number in the report can be recomputed by hand.

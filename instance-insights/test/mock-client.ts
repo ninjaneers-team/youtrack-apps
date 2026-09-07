@@ -23,10 +23,13 @@ import type {
   AgileBoard,
   CountResult,
   CustomField,
+  InstanceOperations,
+  InstanceSettings,
   Project,
   StateBundle,
   User,
   UserGroup,
+  ValueBundle,
   YouTrackClient,
 } from '../src/types.ts';
 
@@ -43,6 +46,14 @@ export interface MockData {
   boards: AgileBoard[];
   groups: UserGroup[];
   stateBundles?: StateBundle[];
+  valueBundles?: ValueBundle[];
+  /**
+   * What the instance says about the server it runs on, or null for one that will
+   * not say - which is how a hosted instance and a reader without the permission
+   * to ask both look from a check's side.
+   */
+  operations?: InstanceOperations | null;
+  settings?: InstanceSettings | null;
   countRules: CountRule[];
   /**
    * Last change per user id, in epoch millis, or null for an account that never
@@ -112,6 +123,18 @@ export class MockYouTrackClient implements YouTrackClient {
   async listStateBundles(): Promise<StateBundle[]> {
     return [...(this.data.stateBundles ?? [])];
   }
+
+  async listValueBundles(): Promise<ValueBundle[]> {
+    return [...(this.data.valueBundles ?? [])];
+  }
+
+  async readOperations(): Promise<InstanceOperations | null> {
+    return this.data.operations ?? null;
+  }
+
+  async readSettings(): Promise<InstanceSettings | null> {
+    return this.data.settings ?? null;
+  }
 }
 
 const DAY_MS = 86_400_000;
@@ -154,13 +177,18 @@ export function syntheticData(now: Date): MockData {
     //   next -> state-without-resolved fires on the two using 'flow-no-done'.
     customFields: [
       field('1-0', 'Sprint', 'version[1]', []),
-      field('1-1', 'Priority', 'enum[1]', [instance('WEB')]),
+      // Required in WEB, and 20 of its 120 issues have no value anyway
+      // -> required-but-empty fires.
+      field('1-1', 'Priority', 'enum[1]', [instance('WEB', null, true)]),
       field('1-2', 'Priorität', 'enum[1]', [instance('APP')]),
       field('1-3', 'Prio', 'enum[1]', [instance('LEGACY')]),
       field('1-4', 'Severity', 'enum[1]', [instance('WEB')]),
       field('1-5', 'State', 'state[1]', [
         instance('WEB', 'flow-done'),
-        instance('APP', 'flow-done'),
+        // Required in APP and filled everywhere: a required field belongs in the
+        // denominator too, or the share describes the fields with gaps rather than
+        // the fields that carry a rule.
+        instance('APP', 'flow-done', true),
         instance('LEGACY', 'flow-no-done'),
         instance('NOLEAD', 'flow-no-done'),
         instance('GHOST', 'flow-done'),
@@ -190,6 +218,40 @@ export function syntheticData(now: Date): MockData {
         ],
       },
     ],
+
+    // --- Value lists -------------------------------------------------------
+    // WEB and APP hold their own copy of the same three values, which is what
+    // YouTrack does to a new project unless somebody picks an existing list
+    // -> cloned-value-lists fires. 'Unfinished' holds nothing and stays out: an
+    // empty list is a different matter, and comparing empty to empty would group
+    // every one of them. The two wordy ones are a group whose values are far too
+    // long to be an identifier, which is what the bound on those is for.
+    valueBundles: [
+      { id: '5-0', name: 'WEB: Types', values: ['Bug', 'Feature', 'Task'] },
+      { id: '5-1', name: 'APP: Types', values: ['Task', 'Bug', 'Feature'] },
+      { id: '5-2', name: 'Severities', values: ['Blocker', 'Minor'] },
+      { id: '5-4', name: 'Wordy', values: Array.from({ length: 40 }, (_, i) => `value number ${i}`) },
+      { id: '5-5', name: 'Wordy copy', values: Array.from({ length: 40 }, (_, i) => `value number ${i}`) },
+      { id: '5-3', name: 'Unfinished', values: [] },
+    ],
+
+    // --- The server behind the instance ------------------------------------
+    // Answers with a path of its own, so the instance is run by whoever reads the
+    // report: the setup checks apply. Its database outgrew its memory, its email
+    // is switched off, nobody is named for messages about the instance, and the
+    // address in its links is the one the server sees itself under.
+    operations: {
+      selfHosted: true,
+      databaseBytes: 8 * 1024 * 1024 * 1024,
+      databaseText: '8.0 GB',
+      memoryBytes: 4 * 1024 * 1024 * 1024,
+      memoryText: '4.0 GB',
+    },
+    settings: {
+      baseUrl: 'http://localhost:8080',
+      administratorEmail: null,
+      mailEnabled: false,
+    },
 
     // --- Users -------------------------------------------------------------
     // The date is the registration date; idleness comes from the activity map
@@ -227,6 +289,8 @@ export function syntheticData(now: Date): MockData {
       /* Plans in sprints, so a column limit is not its instrument: out of
          boards-without-wip-limits, still in the column-count and archive checks.
          Also still carries the archived project -> boards-on-archived-projects. */
+      /* Its owner lost access, and nobody took the board over
+         -> boards-owned-by-blocked-accounts fires on one board of three. */
       board('3-2', 'Release LEGACY', ['LEGACY', 'ARCHIVE'], [
         column('Idea'),
         column('Specified'),
@@ -237,7 +301,7 @@ export function syntheticData(now: Date): MockData {
         column('Staging'),
         column('Release Notes'),
         column('Released', { resolved: true }),
-      ], true),
+      ], true, { login: 'u-gone', banned: true }),
     ],
 
     // --- Groups ------------------------------------------------------------
@@ -292,6 +356,38 @@ export function syntheticData(now: Date): MockData {
         match: /Unassigned/i,
         count: 60,
         // serves: process.unassigned-unresolved (numerator)
+      },
+      {
+        /* A field its project demands a value for, filled in 100 of the 120 issues
+           of that project: 20 issues contradict a rule the project itself made. */
+        match: /project:.*and has:\s*\{\s*Priority\s*\}/i,
+        count: 100,
+        // serves: fields.required-but-empty (the field with gaps)
+      },
+      {
+        // The other required field is filled in every issue of its project.
+        match: /project:.*and has:\s*\{\s*State\s*\}/i,
+        count: 80,
+        // serves: fields.required-but-empty (the required field without gaps)
+      },
+      {
+        // 90 issues arrived in the window and 60 left it, so a third of the
+        // arrivals stayed.
+        match: /^created:/i,
+        count: 90,
+        // serves: process.intake-vs-throughput (what arrived)
+      },
+      {
+        match: /^resolved date:/i,
+        count: 60,
+        // serves: process.intake-vs-throughput (what was finished)
+      },
+      {
+        // The blocked account still holds open work. Ahead of the plain
+        // Unresolved rule, which would otherwise answer with the instance total.
+        match: /Assignee:\s*\{\s*u-gone\s*\}/i,
+        count: 12,
+        // serves: governance.open-work-of-blocked-accounts
       },
       {
         // Severity is attached to WEB alone, which holds 120 issues, and carries a
@@ -369,8 +465,9 @@ function field(
 function instance(
   projectShortName: string,
   bundleId: string | null = null,
+  required = false,
 ): CustomField['instances'][number] {
-  return { id: `i-${projectShortName}`, projectShortName, bundleId };
+  return { id: `i-${projectShortName}`, projectShortName, bundleId, required };
 }
 
 function user(
@@ -389,6 +486,7 @@ function board(
   projects: string[],
   columns: AgileBoard['columns'],
   usesSprints = false,
+  owner: AgileBoard['owner'] = { login: 'u-lead', banned: false },
 ): AgileBoard {
   // Every board in a real instance builds its columns from a field; State is the
   // default one YouTrack sets up.
@@ -396,6 +494,7 @@ function board(
     id,
     name,
     columnField: 'State',
+    owner,
     projects,
     sprints: ['First sprint'],
     columns,
@@ -468,6 +567,9 @@ export function recordingClient(inner: YouTrackClient): {
       listAgileBoards: () => note('listAgileBoards', inner.listAgileBoards()),
       listGroups: () => note('listGroups', inner.listGroups()),
       listStateBundles: () => note('listStateBundles', inner.listStateBundles()),
+      listValueBundles: () => note('listValueBundles', inner.listValueBundles()),
+      readOperations: () => note('readOperations', inner.readOperations()),
+      readSettings: () => note('readSettings', inner.readSettings()),
     },
   };
 }

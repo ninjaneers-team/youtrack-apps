@@ -30,7 +30,9 @@ import {
   METHOD_NOTE,
   WEIGHT_REASON,
   MOVEMENT_LABEL,
-  noMeasurementPhrase,
+  andList,
+  noMeasurementGroups,
+  shareText,
   NO_MEASUREMENT_HEADING,
   NO_MEASUREMENT_NOTE,
   oneDecimal,
@@ -553,11 +555,10 @@ function notRunList(
   outcomes: readonly CheckOutcome[],
   byId: Map<string, CheckDefinition>,
 ): string {
-  const items = outcomes
-    .map((o) => {
-      const title = byId.get(o.checkId)?.title ?? o.checkId;
-      return `<li>${esc(title)} - ${esc(noMeasurementPhrase(o.status, o.reason))}</li>`;
-    })
+  // Checks that came back for the same reason share one line: three of them under
+  // three bullets read as three failures rather than as one part not applying.
+  const items = noMeasurementGroups(outcomes, (id) => byId.get(id)?.title ?? id)
+    .map((group) => `<li>${esc(andList(group.titles))} - ${esc(group.phrase)}</li>`)
     .join('');
   return `<ul class="list">${items}</ul>`;
 }
@@ -610,7 +611,7 @@ function findingBlock(
     const markedNoun =
       finding.itemKind === undefined ? 'object' : ITEM_NOUN[finding.itemKind];
     const share =
-      `${percent(finding.ratio)} % affected ` +
+      `${shareText(finding.ratio)} affected ` +
       `(ratio ${finding.ratio.toFixed(RATIO_DECIMALS)})` +
       (markedHere > 0
         ? `, ${plural(markedHere, markedNoun)} marked as intentional so ` +

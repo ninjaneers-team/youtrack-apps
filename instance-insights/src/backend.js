@@ -101,7 +101,10 @@ const RUN_BYTES_LIMIT = 1048576;
  * in the interface, because the interface is not the boundary.
  * `test/backend.test.ts` holds this against the catalog, so the two cannot drift.
  */
-const CHECKS_NAMING_PEOPLE = ['licensing.inactive-users'];
+const CHECKS_NAMING_PEOPLE = [
+  'licensing.inactive-users',
+  'governance.open-work-of-blocked-accounts',
+];
 
 /**
  * How long an identifier may be before the handler stops believing it.
@@ -121,7 +124,7 @@ const CHECKS_NAMING_PEOPLE = ['licensing.inactive-users'];
  */
 const MAX_ID_LENGTH = 250;
 
-/** Checks in one scan. The catalog holds fifteen; this is room to grow, not a cap. */
+/** Checks in one scan. The catalog holds twenty-two; room to grow, not a cap. */
 const MAX_CHECKS = 200;
 
 /**
@@ -145,7 +148,15 @@ const STATUSES = ['finding', 'clean', 'skipped', 'failed'];
 /** @type {readonly import('./types.ts').Severity[]} */
 const SEVERITIES = ['critical', 'high', 'medium', 'low'];
 /** @type {readonly import('./types.ts').ItemKind[]} */
-const ITEM_KINDS = ['project', 'board', 'field', 'field-group', 'group', 'account'];
+const ITEM_KINDS = [
+  'project',
+  'board',
+  'field',
+  'field-group',
+  'value-list',
+  'group',
+  'account',
+];
 
 /**
  * The fields of a value that is an object, or null when it is not one.

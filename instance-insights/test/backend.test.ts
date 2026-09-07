@@ -569,7 +569,7 @@ test('a scan carries the checks of this app, not an unbounded list', () => {
     checks: many,
   });
 
-  // The catalog holds fifteen. The bound is room to grow, not a promise.
+  // The catalog holds fourteen. The bound is room to grow, not a promise.
   const stored = JSON.parse(properties.lastScan ?? '{}') as { checks: unknown[] };
   assert.equal(stored.checks.length, 200);
   const run = JSON.parse(properties.lastRun ?? '{}') as { checks: unknown[] };

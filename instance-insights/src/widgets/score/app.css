@@ -82,6 +82,13 @@
   color: var(--quiet);
 }
 
+.score-tile__new-window {
+  /* Beside the label rather than above it, and only as tall as the text: the glyph
+     says the link opens a tab, and a glyph that outweighs the words says it twice. */
+  margin-left: var(--ring-unit);
+  vertical-align: baseline;
+}
+
 .score-tile__error {
   margin: 0;
   color: var(--ring-error-color);

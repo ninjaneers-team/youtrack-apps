@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { METHOD_NOTE } from '../src/report-shared.ts';
+import { andList, METHOD_NOTE } from '../src/report-shared.ts';
 
 import { CHECKS } from '../src/checks/catalog.ts';
 import { runChecks, score } from '../src/engine.ts';
@@ -9,7 +9,7 @@ import type { CheckOutcome } from '../src/engine.ts';
 import { reportToMarkdown } from '../src/report-markdown.ts';
 import { DEFAULT_CONFIG, SCAN_STOPPED_REASON } from '../src/types.ts';
 import type { ScanContext } from '../src/types.ts';
-import { syntheticInstance } from './mock-client.ts';
+import { MockYouTrackClient, syntheticData, syntheticInstance } from './mock-client.ts';
 
 /**
  * The exported report is the product - it gets forwarded to people who never see
@@ -64,9 +64,9 @@ test('the categories table lists every category that was scored', async () => {
   const md = await render();
 
   /* Every figure is a slice of the same hundred as the overall score - the licence
-     category is worth thirty of it, not a hundred of its own. */
-  assert.match(md, /\| Licences \| \d+\.\d \/ 30\.0 \|/);
-  assert.match(md, /\| Process hygiene \| \d+\.\d \/ 20\.0 \|/);
+     category is worth a quarter of it, not a hundred of its own. */
+  assert.match(md, /\| Licences \| \d+\.\d \/ 25\.0 \|/);
+  assert.match(md, /\| Process hygiene \| \d+\.\d \/ 16\.7 \|/);
 });
 
 test('intentional findings move into their own section', async () => {
@@ -98,9 +98,10 @@ test('a check without a measurement is named, and not called skipped', () => {
   const md = reportToMarkdown({ result: score(outcomes), checks: CHECKS, at: NOW });
 
   assert.match(md, /^## Checks without a measurement$/m);
-  // The check ran; it found nothing in this instance it could measure. "Skipped" is
-  // the engine's word for that and reads in a report as something gone wrong.
-  assert.match(md, /Fields that stay empty - nothing in this instance to measure/);
+  /* The check ran and came back without a number. "Skipped" is the engine's word
+     for that and reads in a report as something gone wrong - and a cause the report
+     was not told is not one it may invent, so it says only what it knows. */
+  assert.match(md, /Fields that stay empty - nothing measured here/);
   assert.ok(!md.includes('- skipped'), 'the engine vocabulary stays out of the report');
   assert.match(md, /stay out of the score\s+entirely/);
   // Nothing ran, so there is no score to state.
@@ -148,8 +149,8 @@ test('only the checks that declare it hide their items', () => {
   const declaring = CHECKS.filter((c) => c.itemsNamePeople).map((c) => c.id);
   assert.deepEqual(
     declaring,
-    ['licensing.inactive-users'],
-    'only the licence check drills down into accounts today',
+    ['licensing.inactive-users', 'governance.open-work-of-blocked-accounts'],
+    'only these two checks drill down into accounts',
   );
 });
 
@@ -165,10 +166,10 @@ test('every finding carries the terms its deduction is made of', async () => {
   assert.equal(terms.length, CHECKS.length);
 
   /* 3 of 5 accounts idle. Licences is the only category with one check, so that
-     check carries the whole thirty points of the category: 60 % of them is 18. */
+     check carries all twenty-five points of the category: 60 % of them is 15. */
   assert.match(
     md,
-    /worth 30\.0 of the hundred, 60 % affected \(ratio 0\.600\), takes away 18\.0/,
+    /worth 25\.0 of the hundred, 60 % affected \(ratio 0\.600\), takes away 15\.0/,
   );
 });
 
@@ -177,8 +178,8 @@ test('the categories table shows the terms behind each category score', async ()
 
   // Plain words instead of sigma notation, same two numbers behind the score.
   assert.match(md, /\| Area \| Points kept \| Points lost \|/);
-  // Licences holds one check, so its thirty points are that check's: 18 lost.
-  assert.match(md, /\| Licences \| 12\.0 \/ 30\.0 \| 18\.0 \|/);
+  // Licences holds one check, so its twenty-five points are that check's: 15 lost.
+  assert.match(md, /\| Licences \| 10\.0 \/ 25\.0 \| 15\.0 \|/);
 });
 
 test('the file says when the scan behind it was stopped', () => {
@@ -242,7 +243,7 @@ test('a score that stands on decisions says so, and names the measured one', asy
      so the number and its reason travel together. */
   assert.match(
     withDecision,
-    /1 finding is marked as intentional, so [\d.]+ of those [\d.]+ points rest on that decision/,
+    /1 finding is marked as intentional, so [\d.]+ of those [\d.]+ points rests? on that decision/,
   );
   /* Both numbers in the sentence. As a figure of its own - "as measured 67.8" - the
      second score meant nothing to anyone who did not already know the concept. */
@@ -284,4 +285,56 @@ test('a marked object stays in the list and says it no longer counts', async () 
      object, or a reader adding up the file would not reach the score in it. */
   assert.match(md, /marked as intentional so \d+ % counted/);
   assert.match(md, /1 object is marked as intentional, so /);
+});
+
+test('checks that came back for one reason are named on one line', async () => {
+  /* On an instance somebody else runs, the three checks that look at the server
+     step aside with the same sentence. Three bullets saying the same thing read as
+     three failures; one bullet naming three checks reads as a part of the report
+     that does not apply here. */
+  const hosted = new MockYouTrackClient({
+    ...syntheticData(NOW),
+    operations: {
+      selfHosted: false,
+      databaseBytes: null,
+      databaseText: null,
+      memoryBytes: null,
+      memoryText: null,
+    },
+  });
+  const outcomes = await runChecks(CHECKS, contextOn(hosted));
+  const md = reportToMarkdown({ result: score(outcomes, new Set()), checks: CHECKS, at: NOW });
+
+  const line = md
+    .split('\n')
+    .find((one) => one.startsWith('- ') && /run for you/.test(one));
+  assert.ok(line, md);
+  assert.match(
+    line,
+    /^- Less memory than database, Nothing can be announced and Links that only work on the server - /,
+  );
+  /* And the category leaves its points to the others rather than counting as zero.
+     It keeps its row, saying so, and the shares of the categories that did measure
+     something go back to what they are worth without it - which is why a score on
+     an instance run for you and one on your own server are not the same figure. */
+  const table = md.slice(md.indexOf('| Area |'), md.indexOf('## Findings'));
+  assert.match(table, /\| Instance setup \| - \| nothing measured here \|/);
+  assert.match(table, /\| Licences \| \d+\.\d \/ 30\.0 \|/);
+});
+
+test('a list of names reads as a sentence lists them', () => {
+  assert.equal(andList([]), '');
+  assert.equal(andList(['one']), 'one');
+  assert.equal(andList(['one', 'two']), 'one and two');
+  assert.equal(andList(['one', 'two', 'three']), 'one, two and three');
+});
+
+test('a finding says what its objects are, never that they are objects', async () => {
+  const md = await render();
+
+  /* "Affected objects (3)" makes the reader open the list to find out what is in
+     it, and "object" is a word out of the code rather than out of the instance.
+     Every check that lists something declares what kind it is. */
+  assert.ok(!/Affected objects/.test(md), md.match(/Affected [a-z ]+\(\d+\)/g)?.join(' | '));
+  assert.match(md, /Affected value lists \(\d+\):/);
 });

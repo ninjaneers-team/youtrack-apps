@@ -11,7 +11,8 @@ export type Category =
   | 'fields'
   | 'process'
   | 'governance'
-  | 'portfolio';
+  | 'portfolio'
+  | 'instance';
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -86,6 +87,7 @@ export const CATEGORY_WEIGHT: Record<Category, number> = {
   process: 2,
   governance: 2,
   portfolio: 1,
+  instance: 2,
 };
 
 export const CATEGORY_LABEL: Record<Category, string> = {
@@ -94,6 +96,7 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   process: 'Process hygiene',
   governance: 'Governance',
   portfolio: 'Project portfolio',
+  instance: 'Instance setup',
 };
 
 /**
@@ -239,6 +242,7 @@ export type ItemKind =
   | 'board'
   | 'field'
   | 'field-group'
+  | 'value-list'
   | 'group'
   | 'account';
 
@@ -325,6 +329,8 @@ export interface ScanConfig {
   minProjectIssues: number;
   /** Share of unresolved issues without assignee before the check fires. */
   unassignedThreshold: number;
+  /** Days of intake and completion compared against each other. */
+  flowWindowDays: number;
 }
 
 export const DEFAULT_CONFIG: ScanConfig = {
@@ -336,6 +342,7 @@ export const DEFAULT_CONFIG: ScanConfig = {
   maxBoardColumns: 7,
   minProjectIssues: 10,
   unassignedThreshold: 0.2,
+  flowWindowDays: 90,
 };
 
 export interface ScanContext {
@@ -386,6 +393,15 @@ export interface CustomFieldInstance {
    * comes from.
    */
   bundleId: string | null;
+  /**
+   * Whether the project demands a value for the field.
+   *
+   * The project's own rule, which is what makes an empty value a contradiction
+   * rather than a matter of taste: an issue without a value for a field the
+   * project requires got there before the rule, through an import, or through the
+   * API, and every report that groups by the field carries it as a silent gap.
+   */
+  required: boolean;
 }
 
 export interface CustomField {
@@ -449,6 +465,8 @@ export interface AgileBoard {
    */
   sprints: string[];
   columns: BoardColumn[];
+  /** Who the board belongs to, or null where the instance names nobody. */
+  owner?: { login: string; banned: boolean } | null;
 }
 
 export interface UserGroup {
@@ -467,6 +485,49 @@ export interface StateBundle {
   id: string;
   name: string;
   values: StateValue[];
+}
+
+/**
+ * A list of values a field offers, as the instance keeps it.
+ *
+ * YouTrack gives each project a list of its own unless someone picks an existing
+ * one, so an instance accumulates copies with the same contents. `values` are the
+ * names in it, which is what makes two lists comparable.
+ */
+export interface ValueBundle {
+  id: string;
+  name: string;
+  values: string[];
+}
+
+/**
+ * What the instance says about the machine it runs on.
+ *
+ * `selfHosted` is the one fact the rest depends on: JetBrains documents that
+ * telemetry attributes a hosted instance does not support come back empty, and a
+ * path on a filesystem is such an attribute. So a path that arrives is proof the
+ * instance runs somewhere its administrator owns, and its absence is not proof of
+ * anything - which is why the checks built on this only ever switch themselves
+ * *on* for a positive answer.
+ */
+export interface InstanceOperations {
+  selfHosted: boolean;
+  /** Size of the database in bytes, and as the instance worded it. */
+  databaseBytes: number | null;
+  databaseText: string | null;
+  /** Memory YouTrack may use, in bytes, and as the instance worded it. */
+  memoryBytes: number | null;
+  memoryText: string | null;
+}
+
+/** The instance-wide settings that decide whether it can reach anyone. */
+export interface InstanceSettings {
+  /** The address the instance puts into the links it sends out. */
+  baseUrl: string | null;
+  /** Where the instance sends what it has to say about itself. */
+  administratorEmail: string | null;
+  /** Whether email notifications are switched on at all. */
+  mailEnabled: boolean | null;
 }
 
 /** What a count came back with: a number, or why the instance refused the query. */
@@ -523,4 +584,16 @@ export interface YouTrackClient {
   listGroups(): Promise<UserGroup[]>;
   /** Every state bundle in the instance, with the resolved flag of each value. */
   listStateBundles(): Promise<StateBundle[]>;
+  /** Every list of field values in the instance, with the names in it. */
+  listValueBundles(): Promise<ValueBundle[]>;
+  /**
+   * What the instance says about its own operation, or null if it would not say.
+   *
+   * Null covers both a reader without system-administrator permissions and an
+   * instance that has no such resource, because a check can do nothing different
+   * with the two: it steps out of the score either way.
+   */
+  readOperations(): Promise<InstanceOperations | null>;
+  /** The instance-wide settings, or null if they cannot be read. */
+  readSettings(): Promise<InstanceSettings | null>;
 }

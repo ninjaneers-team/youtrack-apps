@@ -22,9 +22,9 @@ const NOW = new Date('2026-09-01T00:00:00.000Z');
 const PER_ACCOUNT = 1;
 const PER_PROJECT = 2;
 const PER_BOARD = 1;
-const PER_FIELD = 1;
+const PER_FIELD = 2;
 /** The lists this app reads, plus the counts it asks once for the whole instance. */
-const FLAT = 22;
+const FLAT = 17;
 
 function requestsFor(shape: Shape): number {
   return (
