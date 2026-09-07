@@ -11,7 +11,8 @@ import {
   sparkline,
   trendFrom,
 } from '../src/trend.ts';
-import type { ScanAggregate } from '../src/trend.ts';
+import type { CheckChange, ScanAggregate } from '../src/trend.ts';
+import { MOVEMENT_LABEL, movementDetail } from '../src/report-shared.ts';
 
 /**
  * The trend is the argument that the work paid off, so its arithmetic is pinned
@@ -195,7 +196,7 @@ test('a check that improved, appeared or was resolved is named as such', () => {
     scanOf('2026-08-11T00:00:00.000Z', 60, [
       ['licensing.inactive-users', 0.3],
       ['process.stale-unresolved', 0],
-      ['process.aging-wip', 0.5],
+      ['process.intake-vs-throughput', 0.5],
     ]),
     scanOf('2026-08-01T00:00:00.000Z', 40, [
       ['licensing.inactive-users', 0.6],
@@ -208,7 +209,7 @@ test('a check that improved, appeared or was resolved is named as such', () => {
   assert.equal(byId.get('licensing.inactive-users')?.kind, 'better');
   assert.equal(byId.get('process.stale-unresolved')?.kind, 'resolved');
   // Present in the newer scan only: it did not exist as a measurement before.
-  assert.equal(byId.get('process.aging-wip')?.kind, 'new');
+  assert.equal(byId.get('process.intake-vs-throughput')?.kind, 'new');
 });
 
 test('a check that stayed the same is not reported as movement', () => {
@@ -264,14 +265,34 @@ test('a check that did not run counts as unmeasured, not as resolved', () => {
     at: '2026-08-11T00:00:00.000Z',
     score: 60,
     findings: 0,
-    checks: [{ id: 'process.aging-wip', status: 'skipped', ratio: 0 }],
+    checks: [{ id: 'process.stale-unresolved', status: 'skipped', ratio: 0 }],
   };
-  const older = scanOf('2026-08-01T00:00:00.000Z', 50, [['process.aging-wip', 0.5]]);
+  const older = scanOf('2026-08-01T00:00:00.000Z', 50, [['process.stale-unresolved', 0.5]]);
 
   const change = checkChanges([newer, older])[0];
   assert.equal(change?.after, null, 'a skipped check has no measurement');
-  // It looks like a resolution but is not one; the wording has to survive that.
-  assert.equal(change?.kind, 'resolved');
+  /* It looks like a resolution and is not one. Reported as resolved, the trend
+     announced work nobody had done - so it is its own kind, and the report names
+     it as what it is. */
+  assert.equal(change?.kind, 'unmeasured');
+  assert.equal(MOVEMENT_LABEL[change?.kind ?? 'unchanged'], 'not measured');
+  assert.equal(movementDetail(change as CheckChange), 'was 50 %');
+});
+
+test('a check that was clean and is now unmeasured is not a movement', () => {
+  const newer: ScanAggregate = {
+    at: '2026-08-11T00:00:00.000Z',
+    score: 60,
+    findings: 0,
+    checks: [{ id: 'process.stale-unresolved', status: 'skipped', ratio: 0 }],
+  };
+  const older = scanOf('2026-08-01T00:00:00.000Z', 50, [['process.stale-unresolved', 0]]);
+
+  /* It had nothing to lose, so there is nothing to report. Listed as a movement it
+     was a line about a check that never found anything. */
+  const comparison = compareScans([newer, older]);
+  assert.deepEqual(comparison.moved, []);
+  assert.equal(comparison.unchanged.length, 1);
 });
 
 test('scans stored before per-check data existed produce no phantom movements', () => {

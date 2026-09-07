@@ -18,6 +18,9 @@ import type { CheckDefinition, Finding } from './types.ts';
 import { CATEGORY_LABEL, plural } from './types.ts';
 import {
   byImpact,
+  MARKED_SECTION_NOTE,
+  NO_FINDINGS_NOTE,
+  nothingMovedNote,
   categoryPoints,
   checkPoints,
   dateText,
@@ -25,7 +28,7 @@ import {
   decisionSentence,
   issueSearchUrl,
   itemUrl,
-  ITEM_NOUN,
+  itemNoun,
   ITEMS_SHOWN,
   METHOD_NOTE,
   WEIGHT_REASON,
@@ -206,7 +209,8 @@ const STYLES = `
   .finding__evidence li + li { margin-top: 1pt; }
   .finding__aside { margin-top: 5pt; font-size: 9pt; color: #5c5f61; }
   .finding__aside b { color: #3c3f41; font-weight: 600; }
-  .finding__items { margin: 4pt 0 0; padding-left: 12pt; font-size: 9pt; color: #3c3f41; }
+  .finding__items-label { margin: 6pt 0 0; font-size: 9pt; font-weight: 600; color: #3c3f41; }
+  .finding__items { margin: 2pt 0 0; padding-left: 12pt; font-size: 9pt; color: #3c3f41; }
 
   .note { margin-top: 6pt; font-size: 9pt; color: #5c5f61; }
   .list { margin: 6pt 0 0; padding-left: 12pt; font-size: 9.5pt; }
@@ -295,8 +299,8 @@ export function reportToPrintHtml({
 
   parts.push(
     '<section class="summary">',
-    // The score opens the conversation, the sum of the estimates is what it is
-    // about, so both are figures of the same size.
+    // The score opens the conversation and the number of findings says how much
+    // is behind it, so both are figures of the same size.
     '<div class="summary__figure"><div class="summary__label">Overall score</div>',
     /* No second figure beside the score: what the difference between the two means
        takes a sentence, and the sentence is directly below. */
@@ -322,8 +326,7 @@ export function reportToPrintHtml({
     parts.push(
       '<h2>Since the previous scan</h2>',
       comparison.moved.length === 0
-        ? `<p class="note">Nothing moved: all ${plural(comparison.unchanged.length, 'check')} came` +
-            ' back within a percentage point of before.</p>'
+        ? `<p class="note">${nothingMovedNote(comparison.unchanged.length)}</p>`
         : movedList(comparison.moved, byId) + unchangedLine(comparison.unchanged, byId),
     );
   }
@@ -338,7 +341,7 @@ export function reportToPrintHtml({
     parts.push(`<p class="note">${SEVERITY_NOTE}</p>`);
   }
   if (result.findings.length === 0) {
-    parts.push('<p class="note">No findings. The areas that were checked look unremarkable.</p>');
+    parts.push(`<p class="note">${NO_FINDINGS_NOTE}</p>`);
   }
   /* Grouped by category, in the order of the table above, and strongest first
      inside a category: the table says where the points went, and this is where the
@@ -364,8 +367,7 @@ export function reportToPrintHtml({
   if (result.ignoredFindings.length > 0) {
     parts.push(
       '<h2>Marked as intentional</h2>',
-      '<p class="note">Reviewed and marked as intentional. These no longer affect the',
-      ' score; their checks still count as having run.</p>',
+      `<p class="note">${MARKED_SECTION_NOTE}</p>`,
     );
     for (const finding of byImpact(result.ignoredFindings)) {
       parts.push(
@@ -608,13 +610,12 @@ function findingBlock(
     const markedHere = listed.filter((i) => marked.has(i.id)).length;
     /* Named, not "of them": a board is marked and cards are counted, so "1 of them"
        would read as one card. */
-    const markedNoun =
-      finding.itemKind === undefined ? 'object' : ITEM_NOUN[finding.itemKind];
     const share =
       `${shareText(finding.ratio)} affected ` +
       `(ratio ${finding.ratio.toFixed(RATIO_DECIMALS)})` +
       (markedHere > 0
-        ? `, ${plural(markedHere, markedNoun)} marked as intentional so ` +
+        ? `, ${markedHere} ${itemNoun(finding.itemKind, markedHere)} marked as ` +
+          `intentional so ` +
           `${percent(counted)} % counted`
         : '');
     parts.push(
@@ -639,7 +640,15 @@ function findingBlock(
       );
     } else {
       const rest = listed.length - ITEMS_SHOWN;
+      /* The list says what it is a list of, and how long it is. Unlabelled, a
+         column of names under a finding leaves the reader to work out both what
+         kind of thing they are looking at and whether they are looking at all of
+         them - which the page and the Markdown file both spell out. */
       parts.push(
+        `<p class="finding__items-label">Affected ${itemNoun(
+          finding.itemKind,
+          listed.length,
+        )} (${listed.length})</p>`,
         '<ul class="finding__items">',
         listed
           .slice(0, ITEMS_SHOWN)

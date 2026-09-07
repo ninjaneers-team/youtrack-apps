@@ -132,16 +132,35 @@ export function instanceOrigin(reportedHost: string | null, baseUri: string): st
  * What a check's objects are called, in the words of someone who has not read the
  * code: "Affected projects (35)" says what will be in the list, where "Affected
  * objects (35)" makes the reader open it to find out.
+ *
+ * Both numbers written out, because one of these nouns does not take its plural at
+ * the end: a rule that appends an s turns a group of fields into a group of
+ * fieldss, and a report that gets its own nouns wrong is read as one that gets its
+ * numbers wrong.
  */
-export const ITEM_NOUN: Record<ItemKind, string> = {
-  project: 'project',
-  board: 'board',
-  field: 'field',
-  'field-group': 'group of fields',
-  'value-list': 'value list',
-  group: 'user group',
-  account: 'account',
+export const ITEM_NOUN: Record<ItemKind, { one: string; many: string }> = {
+  project: { one: 'project', many: 'projects' },
+  board: { one: 'board', many: 'boards' },
+  field: { one: 'field', many: 'fields' },
+  'field-group': { one: 'group of fields', many: 'groups of fields' },
+  'value-list': { one: 'value list', many: 'value lists' },
+  group: { one: 'user group', many: 'user groups' },
+  account: { one: 'account', many: 'accounts' },
 };
+
+/**
+ * What the objects of a finding are called, in the number there are of them.
+ *
+ * A check that lists nothing countable says "object", which is the code's word and
+ * the last resort: every check that carries a list names its kind.
+ */
+export function itemNoun(kind: ItemKind | undefined, count: number): string {
+  if (kind === undefined) {
+    return pluralNoun(count, 'object');
+  }
+  const noun = ITEM_NOUN[kind];
+  return count === 1 ? noun.one : noun.many;
+}
 
 export const SEVERITY_LABEL: Record<Severity, string> = {
   critical: 'Critical',
@@ -181,7 +200,9 @@ export function movementDetail(change: CheckChange): string {
   if (change.kind === 'new') {
     return `${shareText(change.after)} affected`;
   }
-  if (change.kind === 'resolved') {
+  /* Both of these have only one share to state, and they are not the same
+     statement: one found nothing this time, the other was not asked. */
+  if (change.kind === 'resolved' || change.kind === 'unmeasured') {
     return `was ${shareText(change.before)}`;
   }
   return `${shareText(change.before)} -> ${shareText(change.after)}`;
@@ -194,6 +215,7 @@ export const MOVEMENT_LABEL: Record<CheckChange['kind'], string> = {
   better: 'improved',
   worse: 'worse',
   unchanged: 'unchanged',
+  unmeasured: 'not measured',
 };
 
 /**
@@ -241,6 +263,34 @@ export const SEVERITY_NOTE = (() => {
 })();
 
 export const NO_MEASUREMENT_HEADING = 'Checks without a measurement';
+
+/**
+ * A scan that found nothing, said in a way that is a result rather than a gap.
+ *
+ * "No findings" on its own reads like a report that failed to run. What it means is
+ * that the checks ran and came back clean, and the second half says so - carefully,
+ * because the app looked at a part of an instance, not at all of it.
+ */
+export const NO_FINDINGS_NOTE =
+  'No findings. The areas that were checked look unremarkable.';
+
+/** That the checks agreed with the previous scan, rather than that none ran. */
+export function nothingMovedNote(unchanged: number): string {
+  return (
+    `Nothing moved: all ${plural(unchanged, 'check')} came back within a ` +
+    'percentage point of before.'
+  );
+}
+
+/**
+ * What marking a finding did, under the heading that already says it was marked.
+ *
+ * The three reports had drifted to three wordings, which reads as three different
+ * rules about what marking does - and each of them opened by repeating the heading
+ * above it.
+ */
+export const MARKED_SECTION_NOTE =
+  'These no longer affect the score; their checks still count as having run.';
 
 /**
  * Three ways to end up here, and the note names all three.
@@ -511,11 +561,13 @@ export function decisionSentence(effect: DecisionEffect): string {
   /* Both numbers in one sentence, because neither explains itself as a figure. A
      line reading "as measured 67.8" beside the score was shorter and meant nothing
      to anyone who did not already know the concept. */
+  /* Every score in a report carries one decimal, this one included: "2 of those 57
+     points" beside a figure reading 57.0 looks like a different number. */
   return (
-    `${subject} ${verb} marked as intentional, so ${effect.points} of those ` +
-    `${effect.reported} ${points} ${rest} on that decision rather than on a ` +
-    `measurement. Measured, this scan is ${effect.asMeasured} out of 100. Nothing ` +
-    'in the instance was measured again for it.'
+    `${subject} ${verb} marked as intentional, so ${scoreText(effect.points)} of ` +
+    `those ${scoreText(effect.reported)} ${points} ${rest} on that decision rather ` +
+    `than on a measurement. Measured, this scan is ${scoreText(effect.asMeasured)} ` +
+    'out of 100. Nothing in the instance was measured again for it.'
   );
 }
 

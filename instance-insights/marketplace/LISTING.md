@@ -15,11 +15,12 @@ work nobody has touched in months.
   so every number in the report can be recomputed by hand.
 - Every finding states what was measured, why it is worth attention, and when it is
   perfectly fine to leave as it is.
-- Mark a finding as intentional, or a single project, board or field within it. The
-  score moves with the decision, the decision holds instance-wide, and every report
-  states how much of the score rests on decisions rather than on measurements.
-- A trend over the last 24 scans, in the report and on a dashboard tile, with what
-  improved, what got worse and what is new.
+- Mark a finding as intentional, or a single project, board, field or list of values
+  within it. The score moves with the decision, the decision holds instance-wide, and
+  every report states how much of the score rests on decisions rather than on
+  measurements.
+- A trend over the last 24 scans in the report, naming what improved, what got worse
+  and what is new - and the current score on a dashboard tile.
 - Two exports: a printable document to hand on outside the instance, and Markdown to
   paste into the issue that tracks the cleanup.
 

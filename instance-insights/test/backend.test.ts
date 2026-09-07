@@ -406,18 +406,18 @@ test('the weight of an object survives the handler, or a marked object rescores'
     at: '2026-08-01T00:00:00.000Z',
     checks: [
       {
-        id: 'process.aging-wip',
+        id: 'fields.cloned-value-lists',
         status: 'finding',
         finding: {
           severity: 'critical',
-          headline: '20 of 25 cards in progress have not moved',
+          headline: '20 of 25 value lists are a copy of another list holding the same values',
           ratio: 0.8,
           affected: 20,
           total: 25,
-          itemKind: 'board',
+          itemKind: 'value-list',
           evidence: [],
           items: [
-            { id: '99-1', label: 'Backlog board', detail: '18 of 18 cards', affected: 18, measured: 18 },
+            { id: '3:High|Low|Normal', label: 'Priority: High, Normal, Low', detail: '18 lists with these values', affected: 17, measured: 18 },
           ],
         },
       },
@@ -427,11 +427,11 @@ test('the weight of an object survives the handler, or a marked object rescores'
   const run = JSON.parse(properties.lastRun ?? 'null');
   const { finding } = run.checks[0];
   /* Numbers about the instance's own configuration, and the score of the restored
-     run stands on them: a board marked as intentional has to take its cards with
-     it, not count as one board of a list. */
+     run stands on them: a set of values marked as intentional has to take all its
+     copies with it, not count as one list of a list. */
   assert.equal(finding.affected, 20);
   assert.deepEqual(finding.items, [
-    { id: '99-1', label: 'Backlog board', detail: '18 of 18 cards', affected: 18, measured: 18 },
+    { id: '3:High|Low|Normal', label: 'Priority: High, Normal, Low', detail: '18 lists with these values', affected: 17, measured: 18 },
   ]);
 });
 

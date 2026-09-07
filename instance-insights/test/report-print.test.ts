@@ -26,6 +26,23 @@ async function render(ignored: ReadonlySet<string> = new Set()): Promise<string>
   return reportToPrintHtml({ result: score(outcomes, ignored), checks: CHECKS, at: NOW });
 }
 
+test('a list of affected objects says what they are and how many', async () => {
+  const html = await render();
+
+  /* An unlabelled column of names under a finding leaves two questions open on
+     paper - what kind of thing these are, and whether they are all of them. The
+     page and the Markdown file both answered them; the document did not. */
+  assert.match(html, /Affected projects \(\d+\)/);
+  assert.match(html, /Affected board \(1\)/);
+  assert.match(html, /Affected value lists \(\d+\)/);
+  /* The one noun that does not take its plural at the end, in the singular the
+     synthetic instance produces - the plural of it is pinned in
+     test/report-shared.test.ts. */
+  assert.match(html, /Affected group of fields \(1\)/);
+  // The accounts of a check that names people stay out, so no label promises them.
+  assert.ok(!html.includes('Affected accounts ('), 'accounts are counted, not listed');
+});
+
 test('the document carries its own styles and needs nothing from the page', async () => {
   const html = await render();
 
@@ -205,7 +222,7 @@ test('a comparison that found nothing says so instead of vanishing', async () =>
 test('a stopped scan says so on the page and names what it did not reach', () => {
   const outcomes: CheckOutcome[] = [
     {
-      checkId: 'process.aging-wip',
+      checkId: 'process.intake-vs-throughput',
       category: 'process',
       weight: 7,
       status: 'skipped',

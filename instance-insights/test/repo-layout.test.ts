@@ -19,6 +19,22 @@ import { APP_NAME, REPORT_WIDGET } from '../src/report-shared.ts';
 const ROOT = new URL('..', import.meta.url).pathname;
 const IGNORED = new Set(['node_modules', '.git', 'dist']);
 
+/** Every source file under a directory, as paths relative to the repository root. */
+function sourceFiles(dir: string, found: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (IGNORED.has(entry.name)) {
+      continue;
+    }
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      sourceFiles(full, found);
+    } else if (/\.(ts|tsx|js|mjs|json|md)$/.test(entry.name)) {
+      found.push(relative(ROOT, full));
+    }
+  }
+  return found;
+}
+
 function findFiles(name: string, dir: string, found: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (IGNORED.has(entry.name)) {
@@ -317,6 +333,74 @@ test('the sources are plain ASCII', () => {
     }
   }
   assert.deepEqual(offenders, [], 'These files carry characters outside ASCII.');
+});
+
+test('every check a test or a document names is a check that exists', () => {
+  /*
+   * A fixture built around a check that was removed goes on passing: the engine
+   * takes any id, so the test keeps testing a shape while its comments describe
+   * something the app no longer does. Four files still named a check that had been
+   * deleted, one of them with two count rules nothing reached any more.
+   */
+  const ids = new Set(CHECKS.map((check) => check.id));
+  const category = '(?:licensing|fields|process|governance|portfolio|instance)';
+  /* Quoted, so that reading the length of a variable named for a category is not
+     taken for a check id. The public README writes them bare, in its table. */
+  const quoted = new RegExp(`['"\`](${category}\\.[a-z][a-z-]+)['"\`]`, 'g');
+  const bare = new RegExp(`\\b(${category}\\.[a-z][a-z-]+)`, 'g');
+  const offenders: string[] = [];
+  const check = (file: string): void => {
+    const text = readFileSync(join(ROOT, file), 'utf8');
+    for (const [, named] of text.matchAll(file.endsWith('.md') ? bare : quoted)) {
+      if (named !== undefined && !ids.has(named)) {
+        offenders.push(`${file}: ${named}`);
+      }
+    }
+  };
+  for (const dir of ['test', 'src', 'scripts']) {
+    for (const file of sourceFiles(join(ROOT, dir))) {
+      check(file);
+    }
+  }
+  for (const file of ['README.md', 'manifest.json']) {
+    if (existsSync(join(ROOT, file))) {
+      check(file);
+    }
+  }
+  assert.deepEqual(offenders, [], 'These name a check the catalog does not have.');
+});
+
+test('a sentence the three reports share is written in one place', () => {
+  /*
+   * The page, the printed document and the Markdown file say a lot of the same
+   * things, and every wording kept in three places is a wording that agrees in two
+   * of them: the section of marked findings had drifted to three sentences, one of
+   * which promised something the other two did not. The vocabulary lives in
+   * report-shared.ts; a renderer that spells one of these out again fails here.
+   */
+  const shared = [
+    'look unremarkable',
+    'percentage point of before',
+    'count as having run',
+    'Ninjaneers GmbH',
+    'walk through this report',
+  ];
+  const renderers = [
+    'src/report-markdown.ts',
+    'src/report-print.ts',
+    'src/widgets/report/app.tsx',
+    'src/widgets/score/app.tsx',
+  ];
+  const offenders: string[] = [];
+  for (const file of renderers) {
+    const text = readFileSync(join(ROOT, file), 'utf8');
+    for (const sentence of shared) {
+      if (text.includes(sentence)) {
+        offenders.push(`${file}: ${sentence}`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], 'These sentences belong in src/report-shared.ts.');
 });
 
 test('the app page a widget links to is the one the manifest declares', () => {

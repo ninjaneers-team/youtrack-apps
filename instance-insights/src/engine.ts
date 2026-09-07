@@ -3,8 +3,9 @@
  *
  * Running and scoring are separate on purpose. Marking a finding as intentional
  * must move the score immediately - that is what makes the report worth reopening -
- * and re-running forty REST counts to recompute arithmetic would be absurd. So `runChecks` produces outcomes, `score` turns outcomes plus a
- * set of ignored check IDs into a result, and `runScan` is the two together.
+ * and asking the instance for every count again to recompute arithmetic would be
+ * absurd. So `runChecks` produces outcomes, `score` turns outcomes plus a set of
+ * ignored check IDs into a result, and `runScan` is the two together.
  *
  * Three hard rules shape the scoring:
  *
@@ -322,7 +323,21 @@ export function effectiveRatio(
   const affected = finding.affected - sumOf(marked, (item) => item.affected ?? 0);
   const population = total - sumOf(marked, (item) => item.measured ?? 0);
   // Everything that was measured is marked: nothing left to deduct for.
-  return population <= 0 ? 0 : affected / population;
+  if (population <= 0) {
+    return 0;
+  }
+  /*
+   * Never above the share that was measured. Both sides of the fraction shrink, and
+   * an object that is less affected than the average takes more off the bottom than
+   * off the top: marking a set of values that exists nine times over, out of a
+   * hundred that mostly exist forty times over, raised the share from 92.47 % to
+   * 92.86 %. Arithmetically that is the share of what is left, but it means the
+   * score falls because an administrator called something intentional - and the
+   * sentence explaining it would have read "-0.1 of those 71.2 points rest on that
+   * decision". A decision may take something out of a measurement; it may not add
+   * to it.
+   */
+  return Math.min(finding.ratio, affected / population);
 }
 
 function sumOf<T>(items: readonly T[], value: (item: T) => number): number {

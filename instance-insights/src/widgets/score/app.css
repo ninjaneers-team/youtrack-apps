@@ -28,7 +28,8 @@
   min-height: 6rem;
 }
 
-/* Score and estimate on one line, so the action below stays inside the tile. */
+/* The score and what it is out of on one line, so the action below stays inside
+   the tile. */
 .score-tile__figures {
   display: flex;
   align-items: baseline;

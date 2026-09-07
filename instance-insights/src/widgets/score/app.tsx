@@ -12,6 +12,7 @@ import {agoPhrase, scanUnderWay, scoreBeforeDecisions, trendFrom} from '../../tr
 import {
   dateText,
   instanceOrigin,
+  movementPhrase,
   oneDecimal,
   reportPageUrl,
   scoreText
@@ -52,22 +53,18 @@ type State =
  *
  * Measured against measured: a score that rose because findings were marked as
  * intentional says nothing about the instance, and this line is about the instance.
+ * The wording is the report's, so the tile and the page name a movement the same
+ * way - and it carries the unit, which a bare "up 2.3" beside a date does not.
  */
 function deltaLabel(delta: number | null): string {
-  if (delta === null) {
-    return '';
-  }
-  if (oneDecimal(delta) === 0) {
-    return ' - unchanged';
-  }
-  return delta > 0 ? ` - up ${oneDecimal(delta)}` : ` - down ${oneDecimal(-delta)}`;
+  return delta === null ? '' : ` - ${movementPhrase(delta)}`;
 }
 
 /**
  * A tile placed before this layout existed keeps its stored height, which can be as
- * little as 104 px, so the content is built to fit that: score and estimate on one
- * line, date and action on the next. Newly placed tiles get more room from the
- * manifest and simply have air left over.
+ * little as 104 px, so the content is built to fit that: the score and what it is
+ * out of on one line, the count below it, date and action on the next. Newly placed
+ * tiles get more room from the manifest and simply have air left over.
  */
 const ScoreView: React.FunctionComponent<{lastScan: ScanAggregate}> = ({
   lastScan
@@ -89,15 +86,14 @@ const ScoreView: React.FunctionComponent<{lastScan: ScanAggregate}> = ({
       <p className="score-tile__offer">
         {plural(lastScan.findings, 'finding')}
         {/* A tile that only shows the raised score sends its reader looking for a
-          change in the instance. The tile has one line for it, so it is the number
-          rather than the sentence the report carries - and set in the quieter
-          colour, because it belongs to the score above it rather than to the
-          count beside it. */}
-        {/* The difference, not a second score: "67.8 as measured" needs a sentence
-            to mean anything, and a tile has one line. */}
+            change in the instance. The difference rather than a second score:
+            "67.8 as measured" needs a sentence to mean anything and a tile has one
+            line - and the unit is named, or the figure reads as half a finding
+            beside the count in front of it. Set in the quieter colour, because it
+            belongs to the score above rather than to that count. */}
         {onDecisions === 0 ? null : (
           <span className="score-tile__measured">
-            {`, ${scoreText(onDecisions)} marked as intentional`}
+            {`, ${scoreText(onDecisions)} points rest on a decision`}
           </span>
         )}
       </p>
@@ -234,8 +230,8 @@ const AppComponent: React.FunctionComponent = () => {
     return (
       <div className="score-tile">
         <p className="score-tile__error">
-          {'The stored score could not be read. It needs permission to manage ' +
-            'apps in this instance.'}
+          {'The stored score could not be read. Reading it needs permission to ' +
+            'manage apps in this instance.'}
         </p>
         <Button onClick={readAgain}>{'Try again'}</Button>
       </div>

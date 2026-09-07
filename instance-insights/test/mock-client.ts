@@ -271,8 +271,7 @@ export function syntheticData(now: Date): MockData {
     ],
 
     // --- Agile boards ------------------------------------------------------
-    // Team WEB: no column carries a WIP limit -> boards-without-wip-limits, and it
-    //   is the first board with a middle column, so aging-wip measures this one.
+    // Team WEB: no column carries a WIP limit -> boards-without-wip-limits.
     // Kanban APP: one column has a max -> legitimate, does not fire.
     // Release LEGACY: nine columns -> overgrown-boards.
     boards: [
@@ -326,30 +325,17 @@ export function syntheticData(now: Date): MockData {
     // Order matters: the most specific token wins. See the file header on why
     // these match tokens rather than exact query strings.
     countRules: [
-      /* Three boards that carry work, and one of them is fine: Team WEB and Kanban
-         APP each hold eight stale cards of twenty, Release LEGACY holds five and
-         none of them stopped. So the share is two boards of three - a board that
-         carries work without a problem belongs in the denominator, or the number
-         would describe the boards with findings rather than the boards there are. */
-      {
-        match: /Board Release LEGACY.*updated:/i,
-        count: 0,
-        // serves: process.aging-wip (the board that carries work and is fine)
-      },
+      /* How much work each of the three boards carries. A board that carries none
+         is out of the board checks entirely, so every one of them answers. */
       {
         match: /Board Release LEGACY/i,
         count: 5,
-        // serves: process.aging-wip (its cards, none of them stale)
-      },
-      {
-        match: /Board (Team WEB|Kanban APP).*updated:/i,
-        count: 8,
-        // serves: process.aging-wip (one board's stale cards)
+        // serves: process.boards-without-wip-limits (this board's cards)
       },
       {
         match: /Board (Team WEB|Kanban APP)/i,
         count: 20,
-        // serves: process.aging-wip and boards-without-wip-limits (one board's cards)
+        // serves: process.boards-without-wip-limits (one board's cards)
       },
       {
         // unassigned & unresolved: 60 of 200 = 0.30 > 0.20 threshold.

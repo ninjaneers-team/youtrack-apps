@@ -16,11 +16,11 @@ import { effectiveRatio } from './engine.ts';
 import type { CategoryScore, IgnoredItems, ScanResult } from './engine.ts';
 import type { CheckChange, Comparison } from './trend.ts';
 import type { CheckDefinition, Finding } from './types.ts';
-import { CATEGORY_LABEL, plural, pluralNoun } from './types.ts';
+import { CATEGORY_LABEL, plural } from './types.ts';
 import {
   categoryPoints,
   checkPoints,
-  ITEM_NOUN,
+  itemNoun,
   decisionEffect,
   decisionSentence,
   issueSearchUrl,
@@ -30,6 +30,10 @@ import {
   WEIGHT_REASON,
   MOVEMENT_LABEL,
   andList,
+  byImpact,
+  MARKED_SECTION_NOTE,
+  NO_FINDINGS_NOTE,
+  nothingMovedNote,
   noMeasurementGroups,
   shareText,
   NO_MEASUREMENT_HEADING,
@@ -80,6 +84,14 @@ export interface MarkdownInput {
   markedItems?: IgnoredItems;
   /** Injected, never read from the clock, so the output is reproducible. */
   at: Date;
+  /**
+   * One sentence about where the score moved, when earlier scans exist.
+   *
+   * The page and the printed document both carry it. The file was listing which
+   * checks moved and never saying that the score had - which is the line somebody
+   * quotes when this file is pasted into the issue that tracks the clean-up.
+   */
+  trendLine?: string;
   /** The comparison against the previous scan, when there is one. */
   comparison?: Comparison;
 }
@@ -88,6 +100,7 @@ export function reportToMarkdown({
   result,
   checks,
   at,
+  trendLine,
   comparison,
   stopped = false,
   instanceUrl,
@@ -121,12 +134,22 @@ export function reportToMarkdown({
   lines.push(METHOD_NOTE);
   lines.push('', WEIGHT_REASON);
 
-  if (comparison?.compared) {
+  if (trendLine !== undefined || comparison?.compared) {
     lines.push('', '## Since the previous scan', '');
+    /* Where the score went, then which checks took it there. The sentence comes
+       first because it is the one a reader quotes. */
+    if (trendLine !== undefined) {
+      lines.push(trendLine);
+    }
+  }
+  if (comparison?.compared) {
+    if (trendLine !== undefined) {
+      lines.push('');
+    }
     if (comparison.moved.length === 0) {
       // Saying nothing here would read as a missing section rather than a result.
       lines.push(
-        `Nothing moved: all ${plural(comparison.unchanged.length, 'check')} came back within a percentage point of before.`,
+        nothingMovedNote(comparison.unchanged.length),
       );
     }
     for (const change of comparison.moved) {
@@ -161,7 +184,7 @@ export function reportToMarkdown({
 
   lines.push('', '## Findings');
   if (result.findings.length === 0) {
-    lines.push('', 'No findings. The areas that were checked look unremarkable.');
+    lines.push('', NO_FINDINGS_NOTE);
   } else {
     lines.push('', SEVERITY_NOTE);
   }
@@ -172,7 +195,9 @@ export function reportToMarkdown({
       continue;
     }
     lines.push('', `### ${CATEGORY_LABEL[category.category]}`);
-    for (const finding of category.findings) {
+    // Strongest first, as the severity note above promises and as the page and the
+    // printed document both show them.
+    for (const finding of byImpact(category.findings)) {
       lines.push(
         '',
         ...findingSection(
@@ -188,11 +213,8 @@ export function reportToMarkdown({
 
   if (result.ignoredFindings.length > 0) {
     lines.push('', '## Marked as intentional', '');
-    lines.push(
-      'These findings were reviewed and marked as intentional. They no longer ' +
-        'affect the score; their checks still count as having run.',
-    );
-    for (const finding of result.ignoredFindings) {
+    lines.push(MARKED_SECTION_NOTE);
+    for (const finding of byImpact(result.ignoredFindings)) {
       lines.push(
         '',
         ...findingSection(
@@ -201,6 +223,7 @@ export function reportToMarkdown({
           byId.get(finding.checkId),
           origin,
           markedItems.get(finding.checkId) ?? NO_MARKS,
+          true,
           3,
         ),
       );
@@ -269,6 +292,8 @@ function findingSection(
   origin: string | null,
   /** Objects of this finding that are marked as intentional. */
   marked: ReadonlySet<string>,
+  /** Whether the whole finding is marked as intentional, and so deducts nothing. */
+  ignored = false,
   /** Heading depth, so a finding sits under its category heading. */
   depth = 4,
 ): string[] {
@@ -297,11 +322,6 @@ function findingSection(
        would not arrive at the score above. */
     const counted = effectiveRatio(finding, marked);
     const markedHere = (finding.items ?? []).filter((i) => marked.has(i.id)).length;
-    /* Named, not "of them": the share is measured in what the check counted, which
-       for some checks is not the thing that was marked - a board is marked, cards
-       are counted, and "1 of them" would read as one card. */
-    const markedNoun =
-      finding.itemKind === undefined ? 'object' : ITEM_NOUN[finding.itemKind];
     const points = checkPoints(result, def.category, def.weight, counted);
     lines.push(
       '',
@@ -309,10 +329,18 @@ function findingSection(
         `${shareText(finding.ratio)} affected ` +
         `(ratio ${finding.ratio.toFixed(RATIO_DECIMALS)})` +
         (markedHere > 0
-          ? `, ${plural(markedHere, markedNoun)} marked as intentional so ` +
+          /* Named, not "of them": the share is measured in what the check counted,
+             which for some checks is not the thing that was marked - a board is
+             marked, cards are counted, and "1 of them" would read as one card. */
+          ? `, ${markedHere} ${itemNoun(finding.itemKind, markedHere)} marked as ` +
+            `intentional so ` +
             `${percent(counted)} % counted`
           : '') +
-        `, takes away ${takenPhrase(points)}`,
+        /* A finding marked as intentional deducts nothing, and printing its
+           arithmetic as though it counted would contradict the score above. */
+        (ignored
+          ? ', takes away nothing while marked as intentional'
+          : `, takes away ${takenPhrase(points)}`),
     );
   }
 
@@ -328,8 +356,10 @@ function findingSection(
     } else {
       /* The kind of thing, not the word from the code: a reader of the file has no
          way to guess what an "object" is here. */
-      const noun = finding.itemKind === undefined ? 'object' : ITEM_NOUN[finding.itemKind];
-      lines.push('', `Affected ${pluralNoun(items.length, noun)} (${items.length}):`);
+      lines.push(
+        '',
+        `Affected ${itemNoun(finding.itemKind, items.length)} (${items.length}):`,
+      );
       lines.push('');
       for (const item of items.slice(0, ITEMS_SHOWN)) {
         const text = item.detail ? `${item.label} - ${item.detail}` : item.label;
@@ -351,14 +381,14 @@ function findingSection(
   if (finding.query !== undefined) {
     /* The number stays checkable, even for someone who only has the file. */
     const href = issueSearchUrl(origin, finding.query);
-    const query = `\`${finding.query}\``;
     /* Named, not just shown: a reader who does not know the syntax could not tell
        that this line was a filter at all. */
+    const query = `\`${finding.query}\``;
     lines.push(
       '',
       href === null
-        ? `The search behind this number: \`${query}\``
-        : `The search behind this number: [\`${query}\`](${href})`,
+        ? `The search behind this number: ${query}`
+        : `The search behind this number: [${query}](${href})`,
     );
   }
 

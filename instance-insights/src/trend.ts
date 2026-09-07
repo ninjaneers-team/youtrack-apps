@@ -64,7 +64,7 @@ export interface CheckChange {
   /** Ratio in the earlier scan, null if the check did not run or is new. */
   before: number | null;
   after: number | null;
-  kind: 'new' | 'resolved' | 'better' | 'worse' | 'unchanged';
+  kind: 'new' | 'resolved' | 'better' | 'worse' | 'unchanged' | 'unmeasured';
   /**
    * What became of the check in the newer scan, or null if it was not in it.
    *
@@ -187,10 +187,22 @@ function ran(entry: CheckAggregate | undefined): boolean {
  * reader is left looking for the difference rather than at the finding. Appearing
  * and disappearing are judged on the measurement itself - a check that starts to
  * find something is news at any share.
+ *
+ * A check that measured something before and nothing now is the one case that is
+ * not a movement at all. Counted as a resolution, the report announced work nobody
+ * did: "resolved - Boards with no limit on work in progress: was 55 %" for a check
+ * that simply found no board to look at this time.
  */
 function changeKind(before: number | null, after: number | null): CheckChange['kind'] {
+  /* Only a check that had something to report counts as no longer measured. One
+     that was clean before and is unmeasured now has lost nothing, and a line about
+     it in the movements would be noise; the list of unchanged checks says what
+     became of it. */
+  if (after === null) {
+    return before !== null && before > 0 ? 'unmeasured' : 'unchanged';
+  }
   const from = before ?? 0;
-  const to = after ?? 0;
+  const to = after;
   if (from === 0 && to > 0) {
     return 'new';
   }

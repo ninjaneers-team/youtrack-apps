@@ -81,6 +81,42 @@ test('intentional findings move into their own section', async () => {
     'the ignored finding belongs below the intentional heading',
   );
   assert.match(md, /no longer\s+affect the score/);
+  /* And its arithmetic says so. Printed as though it counted, the section would
+     contradict the score at the top of the same file. */
+  assert.match(md, /takes away nothing while marked as intentional/);
+});
+
+test('the findings of a category come strongest first', async () => {
+  const md = await render();
+
+  /* The severity note in this very file promises "strongest first", and the page
+     and the printed document both sort. The file did not, so one document said
+     three different things about the same findings. */
+  const rest = md.slice(md.indexOf('### Process hygiene') + '### Process hygiene'.length);
+  const until = rest.search(/^#{1,3} /m);
+  const section = until === -1 ? rest : rest.slice(0, until);
+  const severities = [...section.matchAll(/^#### .* \((Critical|High|Medium|Low)\)$/gm)]
+    .map((match) => match[1]);
+  const rank = ['Critical', 'High', 'Medium', 'Low'];
+  const ranks = severities.map((level) => rank.indexOf(level ?? ''));
+  assert.ok(ranks.length > 1, 'the category has several findings to order');
+  assert.deepEqual(ranks, [...ranks].sort((a, b) => a - b), severities.join(', '));
+});
+
+test('the file says where the score moved, not only which checks did', async () => {
+  const outcomes = await runChecks(CHECKS, contextOn(syntheticInstance(NOW)));
+  const md = reportToMarkdown({
+    result: score(outcomes),
+    checks: CHECKS,
+    at: NOW,
+    trendLine: 'Down 2.1 points against the scan from yesterday.',
+  });
+
+  /* The page and the printed document both carry this line. The file listed which
+     checks moved and never said that the score had - which is the line somebody
+     quotes when the file is pasted into the issue that tracks the clean-up. */
+  assert.match(md, /^## Since the previous scan$/m);
+  assert.ok(md.includes('Down 2.1 points against the scan from yesterday.'));
 });
 
 test('a check without a measurement is named, and not called skipped', () => {

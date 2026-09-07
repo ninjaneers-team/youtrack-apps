@@ -423,6 +423,55 @@ test('marking an object that weighs more takes its weight out, not one of a list
   assert.equal(bothMarked.overallScore, 100);
 });
 
+test('a decision never costs points', async () => {
+  /* The value-list shape: two sets of values that exist forty times over and one
+     that exists nine times. The small one is less affected than the average, so
+     taking it out of both sides of the share leaves a *higher* share behind - 92.47
+     % became 92.86 %, the score fell, and the sentence about it would have read
+     "-0.1 of those points rest on that decision". A decision may take something out
+     of a measurement; it may not add to it. */
+  const lists = stub(
+    'a',
+    async () => ({
+      checkId: 'a',
+      severity: 'critical' as const,
+      headline: '86 of 93 value lists are a copy',
+      ratio: 86 / 93,
+      evidence: [],
+      affected: 86,
+      total: 93,
+      items: [
+        { id: 'big', label: 'Type', affected: 39, measured: 40 },
+        { id: 'other', label: 'Priority', affected: 39, measured: 40 },
+        { id: 'small', label: 'Severity', affected: 8, measured: 9 },
+      ],
+    }),
+    { weight: 10 },
+  );
+
+  const measured = await runScan([lists], ctx());
+  const decided = await runScan(
+    [lists],
+    ctx(),
+    new Set(),
+    new Map([['a', new Set(['small'])]]),
+  );
+
+  assert.ok(
+    (decided.overallScore ?? 0) >= (measured.overallScore ?? 0),
+    `${decided.overallScore} should not be below ${measured.overallScore}`,
+  );
+  assert.equal(decided.overallScore, measured.overallScore);
+  // Marking one that weighs more than the average still pays off.
+  const better = await runScan(
+    [lists],
+    ctx(),
+    new Set(),
+    new Map([['a', new Set(['big'])]]),
+  );
+  assert.ok((better.overallScore ?? 0) > (measured.overallScore ?? 0));
+});
+
 test('marking an object can shrink the count without shrinking the population', async () => {
   /* The inconsistent-field-names shape: 3 of 40 fields repeat a name, listed as
      groups of names. A group marked intentional stops counting, but its fields are

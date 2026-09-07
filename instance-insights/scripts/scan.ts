@@ -53,10 +53,6 @@ async function main(): Promise<void> {
   for (const o of failed) {
     console.log(`\nFailed: ${o.checkId} - ${o.error?.message}`);
   }
-
-  console.log(
-      `across ${result.findings.length} findings`,
-  );
 }
 
 main().catch((err) => {

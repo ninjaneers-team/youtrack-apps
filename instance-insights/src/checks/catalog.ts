@@ -242,7 +242,7 @@ const inactiveUsers: CheckDefinition = checkOf({
     "the account's Account Security page shows when its password and each of its " +
     'tokens were last used - that is where an API-only account proves it is alive.',
   whatItInvolves:
-    'The change itself takes minutes. The work is the agreement: for ' +
+    'Withdrawing a seat is one setting. The work is the agreement: for ' +
     'each account, who used it last, whether an integration depends on ' +
     'it, and who signs off on withdrawing the seat.',
   itemsNamePeople: true,
@@ -438,7 +438,7 @@ const emptyField: CheckDefinition = checkOf({
     const ratio = share(empties.length, measured);
     return {
       itemKind: 'field',
-      headline: `${empties.length} of ${plural(measured, 'field')} ${agree(empties.length, 'is', 'are')} empty in more than ${pct(ctx.config.emptyFieldThreshold)} of the issues that could carry them.`,
+      headline: `${empties.length} of ${plural(measured, 'field')} ${agree(empties.length, 'is', 'are')} empty in more than ${pct(ctx.config.emptyFieldThreshold)} of the issues that could carry ${agree(empties.length, 'it', 'them')}.`,
       ratio,
       total: measured,
       evidence: [
@@ -498,6 +498,24 @@ function fieldsByBundle(fields: readonly CustomField[]): Map<string, Set<string>
     }
   }
   return byBundle;
+}
+
+/**
+ * How many of a list's values a row names before it counts the rest.
+ *
+ * A list is recognised by its first few values; a state vocabulary of forty ran to
+ * six hundred characters in a row of a table, and neither a page nor a printed
+ * document has room for that.
+ */
+const VALUES_NAMED = 6;
+
+/** The values of a list as a row names them: enough to recognise it, then a count. */
+function valuesShown(values: readonly string[]): string {
+  if (values.length <= VALUES_NAMED) {
+    return values.join(', ');
+  }
+  const rest = values.length - VALUES_NAMED;
+  return `${values.slice(0, VALUES_NAMED).join(', ')} and ${rest} more`;
 }
 
 /**
@@ -578,6 +596,7 @@ const clonedValueLists: CheckDefinition = checkOf({
       headline: `${redundant} of ${plural(filled.length, 'value list')} ${agree(redundant, 'is', 'are')} a copy of another list holding the same values.`,
       ratio,
       affected: redundant,
+      total: filled.length,
       items: toItems(copied, (group) => ({
         // The values are the identity of the group: the names of the lists differ
         // from copy to copy, and a decision about one of them is a decision about
@@ -585,8 +604,8 @@ const clonedValueLists: CheckDefinition = checkOf({
         id: group.id,
         label:
           group.fields.length === 0
-            ? group.values.join(', ')
-            : `${group.fields.join(', ')}: ${group.values.join(', ')}`,
+            ? valuesShown(group.values)
+            : `${group.fields.join(', ')}: ${valuesShown(group.values)}`,
         detail: `${plural(group.copies, 'list')} with these values`,
         affected: group.copies - 1,
         measured: group.copies,
@@ -645,7 +664,7 @@ const requiredButEmpty: CheckDefinition = checkOf({
     );
     const gaps: Array<{ id: string; name: string; gap: number; issues: number; projects: number }> =
       [];
-    let measuredIssues = 0;
+    let requiredValues = 0;
     let unreachable = 0;
     for (const [index, { field, where, issues }] of candidates.entries()) {
       const result = filledCounts[index];
@@ -653,7 +672,7 @@ const requiredButEmpty: CheckDefinition = checkOf({
         unreachable++;
         continue;
       }
-      measuredIssues += issues;
+      requiredValues += issues;
       // Filled and total are two counts taken moments apart, so the difference can
       // come out negative when issues moved in between. That is not a gap.
       const gap = Math.max(0, issues - result.count);
@@ -661,7 +680,7 @@ const requiredButEmpty: CheckDefinition = checkOf({
         gaps.push({ id: field.id, name: field.name, gap, issues, projects: where.length });
       }
     }
-    if (measuredIssues === 0) {
+    if (requiredValues === 0) {
       throw new CheckSkipped(
         `The instance answered for none of the ${candidates.length} required fields.`,
       );
@@ -669,12 +688,16 @@ const requiredButEmpty: CheckDefinition = checkOf({
     if (gaps.length === 0) return null;
 
     const missing = gaps.reduce((sum, entry) => sum + entry.gap, 0);
-    const ratio = share(missing, measuredIssues);
+    const ratio = share(missing, requiredValues);
     return {
       itemKind: 'field',
-      headline: `${missing} of ${plural(measuredIssues, 'issue')} in the projects that require a field ${agree(missing, 'has', 'have')} no value for it.`,
+      /* Counted in values, not in issues: an issue in a project that requires two
+         fields owes two values, and calling that one issue would make the number
+         smaller than what has to be filled in. */
+      headline: `${missing} of ${plural(requiredValues, 'value')} a project requires ${agree(missing, 'is', 'are')} not filled in.`,
       ratio,
       affected: missing,
+      total: requiredValues,
       evidence: [
         ...(unreachable > 0
           ? [{ label: 'Required fields the instance did not answer for', value: unreachable }]
@@ -1129,21 +1152,18 @@ const openWorkOfBlockedAccounts: CheckDefinition = checkOf({
       itemKind: 'account',
       headline: `${stranded} of ${plural(open, 'open issue')} ${agree(stranded, 'is', 'are')} assigned to an account that can no longer sign in.`,
       ratio,
-      affected: stranded,
       evidence: [
         ...(unreachable > 0
           ? [{ label: 'Blocked accounts the instance did not answer for', value: unreachable }]
           : []),
       ],
+      /* No weights on the rows, and no population on the finding: this check names
+         people, so the app never stores its objects and a single account cannot be
+         marked. What can be marked is the finding as a whole. */
       items: toItems(holders, (entry) => ({
         id: entry.user.id,
         label: entry.user.login,
         detail: plural(entry.open, 'open issue'),
-        affected: entry.open,
-        // The population is the open issues, not the accounts: taking one account
-        // out of the decision takes its issues out of the numerator and leaves the
-        // instance's open issues as they are.
-        measured: 0,
       })),
     };
   },
@@ -1314,11 +1334,9 @@ const tinyProjects: CheckDefinition = checkOf({
     'A project that was just created, or one used for a small recurring task such ' +
     'as an on-call rotation.',
   whatItInvolves:
-    'Merging a handful of issues into another project is quick; ' +
-    'deciding where they belong, and who keeps the recurring task ' +
-    'afterwards, is not. Each project also carries its own fields, ' +
-    'permissions and board, which is what the clean-up is actually ' +
-    'about.',
+    'Moving a handful of issues into another project is a bulk edit. The work is ' +
+    'deciding where they belong, and who keeps the recurring task afterwards - ' +
+    'which is a question for whoever set the project up.',
   run: async (ctx): Promise<Measured | null> => {
     const projects = countedProjects(await ctx.client.listProjects());
     if (projects.length === 0) throw new CheckSkipped('The instance has no active projects.');

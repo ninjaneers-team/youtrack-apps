@@ -31,6 +31,52 @@ test('every catalog check fires on the synthetic instance', async () => {
   assert.equal(result.findings.length, CHECKS.length);
 });
 
+test('a finding that weighs its objects can have one of them marked', async () => {
+  const result = await runScan(CHECKS, contextOn(syntheticInstance(NOW)));
+
+  /* `effectiveRatio` recomputes a share without a marked object out of `total`, and
+     without one it hands back the measured share unchanged - so a finding that
+     carries `affected` and weighs its rows, but names no population, cannot be
+     marked object by object at all. Nothing said so: the rows kept their weights,
+     the widget quietly left the checkbox off, and two checks shipped that way. */
+  for (const finding of result.findings) {
+    const items = finding.items ?? [];
+    const weighted = items.filter(
+      (item) => item.affected !== undefined || item.measured !== undefined,
+    );
+    if (finding.affected === undefined) {
+      assert.deepEqual(
+        weighted.map((item) => item.id),
+        [],
+        `${finding.checkId} weighs its rows without counting a numerator`,
+      );
+      continue;
+    }
+    assert.notEqual(
+      finding.total,
+      undefined,
+      `${finding.checkId} counts a numerator but names no population to mark against`,
+    );
+    assert.equal(
+      weighted.length,
+      items.length,
+      `${finding.checkId} leaves some of its rows without a weight`,
+    );
+  }
+});
+
+test('a row that names a list of values stays readable', async () => {
+  const finding = await findingOf('fields.cloned-value-lists', syntheticInstance(NOW));
+
+  /* A state vocabulary of forty values ran to six hundred characters in one row of
+     a table. A list is recognised by its first few values and a count of the rest. */
+  const long = finding.items?.find((item) => item.label.includes('and 34 more'));
+  assert.ok(long, finding.items?.map((item) => item.label).join(' | '));
+  for (const item of finding.items ?? []) {
+    assert.ok(item.label.length <= 120, `${item.label.length}: ${item.label}`);
+  }
+});
+
 test('no check states a duration, only what the work involves', () => {
   for (const check of CHECKS) {
     assert.ok(
@@ -38,9 +84,13 @@ test('no check states a duration, only what the work involves', () => {
       `${check.id} has to say what the work involves`,
     );
     // A duration for an instance nobody has seen would be guessed, and one item a
-    // reader can judge precisely would take the whole report down with it.
+    // reader can judge precisely would take the whole report down with it. Every
+    // unit, not only the large ones: "takes minutes" is the same promise as "takes
+    // two days", and it slipped past a guard that only knew about days and weeks.
     assert.ok(
-      !/person-days?|\bdays?\b|\bhours?\b|\bweeks?\b/i.test(check.whatItInvolves),
+      !/person-days?|\b(seconds?|minutes?|hours?|days?|weeks?|months?|years?)\b/i.test(
+        check.whatItInvolves,
+      ),
       `${check.id} must not put a duration in whatItInvolves`,
     );
   }
@@ -667,8 +717,6 @@ test('the checks whose objects cannot be marked one by one say why', async () =>
      none of those - it carries the weights on the items instead. Pinned so a new
      check is a decision. */
   assert.deepEqual(withoutTotal, [
-    'fields.cloned-value-lists',
-    'fields.required-but-empty',
     'governance.open-work-of-blocked-accounts',
     'instance.address-only-works-here',
     'instance.memory-below-database',
@@ -843,9 +891,12 @@ test('a required field is measured against the projects that require it', async 
      the denominator, or the share would describe the fields with gaps rather than
      the fields that carry a rule. */
   assert.equal(finding.affected, 20);
+  assert.equal(finding.total, 200);
   assert.equal(finding.ratio, 20 / 200);
   assert.equal(finding.items?.length, 1);
-  assert.match(finding.headline, /^20 of 200 issues in the projects that require a field/);
+  /* Values rather than issues: an issue in a project that requires two fields owes
+     two of them, so the two numbers are not a count of issues. */
+  assert.match(finding.headline, /^20 of 200 values a project requires are not filled in/);
   assert.match(finding.items?.[0]?.detail ?? '', /^20 of 120 issues in 1 project$/);
 });
 
@@ -1030,14 +1081,15 @@ test('open work on a blocked account is measured against every open issue', asyn
     syntheticInstance(NOW),
   );
 
-  assert.equal(finding.affected, 12);
   assert.equal(finding.ratio, 12 / 200);
   assert.match(finding.headline, /^12 of 200 open issues are assigned to an account/);
   assert.equal(finding.items?.length, 1);
   assert.equal(finding.items?.[0]?.detail, '12 open issues');
-  // The population is the open issues, so an account taken out of the decision
-  // takes its issues out of the numerator and leaves the denominator alone.
-  assert.equal(finding.items?.[0]?.measured, 0);
+  /* No weights on the rows: this check names people, so a single account is never
+     stored and never marked. Weights it could not be used with read as an
+     affordance the app does not have. */
+  assert.equal(finding.affected, undefined);
+  assert.equal(finding.items?.[0]?.measured, undefined);
 });
 
 test('a blocked account that holds no open work is not named', async () => {

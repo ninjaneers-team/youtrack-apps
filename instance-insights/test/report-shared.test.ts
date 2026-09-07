@@ -5,9 +5,12 @@ import { CHECKS } from '../src/checks/catalog.ts';
 import { runChecks, score } from '../src/engine.ts';
 import {
   ITEM_NOUN,
+  itemNoun,
   categoryPoints,
   dateText,
   decisionEffect,
+  decisionSentence,
+  scoreText,
   duration,
   instanceOrigin,
   issueSearchUrl,
@@ -92,6 +95,28 @@ test('what decisions handed back comes out of the same hundred', async () => {
   assert.equal(oneDecimal(decided.overallScore + lost), 100);
 });
 
+test('the sentence about decisions carries the scores at one decimal', async () => {
+  const all = await outcomes();
+  const decided = score(all, new Set(['governance.projects-without-leader']));
+  const effect = decisionEffect(decided);
+  assert.ok(effect);
+
+  /* Every score in a report is shown to one decimal, this sentence included. It
+     printed the bare numbers, so a report whose ring read 57.0 explained itself
+     with "2 of those 57 points" - which reads as a second, different figure. */
+  const sentence = decisionSentence(effect);
+  for (const figure of [effect.points, effect.reported, effect.asMeasured]) {
+    assert.ok(
+      sentence.includes(scoreText(figure)),
+      `${scoreText(figure)} missing from: ${sentence}`,
+    );
+  }
+  assert.ok(
+    sentence.includes(`${scoreText(effect.points)} of those ${scoreText(effect.reported)}`),
+    sentence,
+  );
+});
+
 test('an instance nothing could be measured on has no score', () => {
   assert.equal(score([]).overallScore, null);
 });
@@ -107,10 +132,21 @@ test('a scan is dated the same way wherever it is read', () => {
   assert.equal(timestampText(at), '2026-08-11, 09:07 UTC');
 });
 
+test('a plural is written out, not made by appending an s', () => {
+  /* One of these nouns does not take its plural at the end. Under the rule that
+     appends an s, a report with two of them read "2 group of fieldss". */
+  assert.equal(itemNoun('field-group', 1), 'group of fields');
+  assert.equal(itemNoun('field-group', 2), 'groups of fields');
+  assert.equal(itemNoun('value-list', 2), 'value lists');
+  // A check that lists nothing countable falls back on the code's own word.
+  assert.equal(itemNoun(undefined, 2), 'objects');
+});
+
 test('every kind of object a check can list has a name and a way there', () => {
   const origin = 'https://youtrack.example.com';
   for (const [kind, noun] of Object.entries(ITEM_NOUN)) {
-    assert.ok(noun.length > 0, `${kind} is called something`);
+    assert.ok(noun.one.length > 0, `${kind} is called something`);
+    assert.ok(noun.many.length > 0, `${kind} is called something in the plural`);
     const url = itemUrl(origin, kind as keyof typeof ITEM_NOUN, {id: 'x', label: 'X'}, 'any.check');
     /* An account is the one kind a report never links to. Everything else does, and
        a kind added without a case in itemUrl would silently print plain text where
@@ -119,7 +155,7 @@ test('every kind of object a check can list has a name and a way there', () => {
     if (kind === 'account') {
       assert.equal(url, null, 'an account is named, never linked to');
     } else {
-      assert.ok(url?.startsWith(origin), `${noun} leads somewhere in the instance`);
+      assert.ok(url?.startsWith(origin), `${noun.one} leads somewhere in the instance`);
     }
   }
 });

@@ -85,8 +85,9 @@ score             = 100 - sum(points lost)
 - Single objects can be marked too, where a check names them: the share is then
   measured on what is left. An object carries the weight it was measured with, so a
   project holding four hundred issues takes those four hundred out of the count,
-  not one project out of a list. Where the objects are accounts there is no such
-  button: nothing about a person is stored.
+  not one project out of a list. A decision can leave the score where it was, but it
+  never costs points. Where the objects are accounts there is no such button:
+  nothing about a person is stored.
 
 Severity (critical, high, medium, low) follows from the ratio. It orders the findings
 and colours them; it is not part of the arithmetic.
@@ -125,9 +126,10 @@ category.
 Thresholds live in `DEFAULT_CONFIG` (`src/types.ts`): 90 days without activity for a
 licence, 180 days without an update for a stale issue, 95 % empty for a field,
 20 % unassigned, more than seven columns for a board, fewer than ten issues for a
-project, and a 90-day window for what arrives against what gets finished. Every finding says when it may be
-firing on something intentional, and none of them states a duration for the work - an
-estimate for an instance the app has never seen would be a guess.
+project, and a 90-day window for what arrives against what gets finished. Every
+finding says when it may be firing on something intentional, and none of them
+states a duration for the work - an estimate for an instance the app has never
+seen would be a guess.
 
 A few definitions are worth knowing, because they are not the obvious ones:
 
@@ -145,9 +147,10 @@ A few definitions are worth knowing, because they are not the obvious ones:
 - **A required field is measured against the projects that require it.** A project
   can declare that a field must hold a value, and the same field can be optional in
   the next project. So the reference is the issues of the projects that demand a
-  value, and one search per field asks how many of them carry one. What the finding
-  states is the difference, which is a contradiction of the instance's own rule
-  rather than a matter of taste.
+  value, and one search per field asks how many of them carry one. The finding is
+  counted in values rather than in issues, because an issue in a project with two
+  required fields owes two of them - and what it states is a contradiction of the
+  instance's own rule rather than a matter of taste.
 - **Copies of a value list are counted as copies, not as lists.** A list that exists
   forty times over is one list and thirty-nine copies, and the order the values are
   listed in is not a difference between them. Comparison is by the values, so two
