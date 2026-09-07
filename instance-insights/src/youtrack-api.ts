@@ -517,6 +517,22 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Thrown when the instance was still computing a count when the budget ran out.
+ *
+ * Told apart from a query the instance refused, because the two call for different
+ * answers: a query it cannot parse will never be answered, and one it is still
+ * working on very likely will. The endpoint computes on the first ask and keeps the
+ * result - which is why every fresh count costs two requests, and why asking a
+ * third time later is cheap rather than hopeful.
+ */
+class CountStillComputing extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CountStillComputing';
+  }
+}
+
 /** How the client behaves towards the instance it reads. */
 export interface ClientOptions {
   /** Milliseconds between two requests. Zero only in tests. */
@@ -881,7 +897,11 @@ export class YouTrackApiClient implements YouTrackClient {
       /* The endpoint is the same for every check, so its name alone identifies
          nothing. The query does - a rejected one is rejected for what is in it. */
       const reason = err instanceof Error ? err.message : String(err);
-      throw new Error(`${reason} - query: ${query.slice(0, QUERY_IN_ERROR_LIMIT)}`);
+      const named = `${reason} - query: ${query.slice(0, QUERY_IN_ERROR_LIMIT)}`;
+      // Which kind of failure it was has to survive being named.
+      throw err instanceof CountStillComputing
+        ? new CountStillComputing(named)
+        : new Error(named);
     }
   }
 
@@ -893,21 +913,47 @@ export class YouTrackApiClient implements YouTrackClient {
    * waiting for each answer before starting the next.
    */
   async countMany(queries: readonly string[]): Promise<CountResult[]> {
-    return Promise.all(
-      queries.map(async query => {
-        try {
-          return { count: await this.count(query) };
-        } catch (err) {
-          // A refused query is one result of the batch; a stopped scan is the end
-          // of it, and the batch rejects with it rather than reporting counts that
-          // failed for a reason the instance had nothing to do with.
-          if (err instanceof ScanCancelled) {
-            throw err;
-          }
-          return { failed: err instanceof Error ? err.message : String(err) };
-        }
-      }),
+    const results = await Promise.all(queries.map(query => this.countResult(query)));
+
+    /* Whatever the instance was still computing when its budget ran out is asked
+       for once more, now that the batch is done and nothing of this scan is in
+       flight. It is not a hopeful retry: the first ask started the computation and
+       the instance keeps the result, so the answer is usually waiting. A query the
+       instance refused is not asked again - it will be refused again. */
+    const pending = results.flatMap((result, index) =>
+      'stillComputing' in result ? [index] : [],
     );
+    if (pending.length > 0) {
+      const again = await Promise.all(
+        pending.map(index => this.countResult(queries[index] ?? '')),
+      );
+      for (const [at, index] of pending.entries()) {
+        results[index] = again[at] ?? results[index] ?? { failed: 'no answer' };
+      }
+    }
+    return results.map(result =>
+      'stillComputing' in result ? { failed: result.stillComputing } : result,
+    );
+  }
+
+  /** One count of a batch: its number, or why it has none. */
+  private async countResult(
+    query: string,
+  ): Promise<CountResult | { readonly stillComputing: string }> {
+    try {
+      return { count: await this.count(query) };
+    } catch (err) {
+      // A refused query is one result of the batch; a stopped scan is the end of
+      // it, and the batch rejects with it rather than reporting counts that failed
+      // for a reason the instance had nothing to do with.
+      if (err instanceof ScanCancelled) {
+        throw err;
+      }
+      const reason = err instanceof Error ? err.message : String(err);
+      return err instanceof CountStillComputing
+        ? { stillComputing: reason }
+        : { failed: reason };
+    }
   }
 
   private async countOf(query: string): Promise<number> {
@@ -929,7 +975,7 @@ export class YouTrackApiClient implements YouTrackClient {
         return value;
       }
       if (Date.now() >= until) {
-        throw new Error(
+        throw new CountStillComputing(
           `The instance was still computing this count after ${budget / MS_PER_SECOND} seconds`,
         );
       }

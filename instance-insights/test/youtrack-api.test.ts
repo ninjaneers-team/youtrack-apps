@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { YouTrackApiClient } from '../src/youtrack-api.ts';
+import { ApiError, YouTrackApiClient } from '../src/youtrack-api.ts';
 import type { ApiTransport, RequestOptions } from '../src/youtrack-api.ts';
 
 /**
@@ -158,21 +158,23 @@ test('no more requests are in flight than allowed, and never closer than the gap
       starts.push(Date.now());
       running++;
       mostAtOnce = Math.max(mostAtOnce, running);
-      // A real answer: a count that comes back as -1 would be polled for again, and
-      // this test would measure the polling instead of the concurrency.
       return new Promise<T>(resolve =>
         setTimeout(() => {
           running--;
-          resolve({ count: 1 } as T);
+          resolve([{ timestamp: 1 }] as T);
         }, 30),
       );
     };
     const client = new YouTrackApiClient(slow, { gapMs: gap });
 
-    // Enough requests for the limit to grow from one to its cap and stay there.
-    await client.countMany(Array.from({ length: 40 }, (_, i) => `#Unresolved ${i}`));
+    /* Activity lookups, not counts: a count is asked for one at a time on purpose,
+       so it would measure that instead of the room-keeping. Enough of them for the
+       limit to grow from one to its cap and stay there. */
+    await Promise.all(
+      Array.from({ length: 40 }, (_, i) => client.lastActivity(`u-${i}`)),
+    );
 
-    assert.equal(starts.length, 40, 'one request per query, and no polling');
+    assert.equal(starts.length, 40, 'one request per lookup');
     assert.ok(mostAtOnce > 1, 'requests overlap once the instance keeps answering');
     assert.ok(mostAtOnce <= 3, `${mostAtOnce} requests were in flight at once`);
     const tolerance = 5;
@@ -184,6 +186,85 @@ test('no more requests are in flight than allowed, and never closer than the gap
       );
     }
   });
+
+test('counts overlap, because a fresh one is answered twice whatever we do', async () => {
+  /* The endpoint computes on the first ask and answers -1 while it works, so a
+     count nobody asked for before costs two requests either way. Measured over
+     forty projects with queries the instance had never seen: overlapping cost 80
+     requests and 4.0 s, one at a time the same 80 requests and 6.6 s - the waiting
+     moves into the critical path instead of hiding behind the gap. So they overlap
+     on purpose, and this holds that decision. */
+  let running = 0;
+  let mostAtOnce = 0;
+  const asked = new Map<string, number>();
+  const computing: ApiTransport = <T>(_path: string, options: RequestOptions = {}) => {
+    const query = String((options.body as {query?: string} | undefined)?.query ?? '');
+    const times = (asked.get(query) ?? 0) + 1;
+    asked.set(query, times);
+    running++;
+    mostAtOnce = Math.max(mostAtOnce, running);
+    return new Promise<T>(resolve =>
+      setTimeout(() => {
+        running--;
+        // -1 on the first ask, the number on the second: how the endpoint behaves.
+        resolve({ count: times === 1 ? -1 : 5 } as T);
+      }, 20),
+    );
+  };
+  const client = new YouTrackApiClient(computing, { gapMs: 1 });
+
+  const results = await client.countMany(Array.from({ length: 9 }, (_, i) => `#Unresolved ${i}`));
+
+  assert.ok(mostAtOnce > 1, 'counts are not asked for one at a time');
+  assert.deepEqual(results, Array.from({ length: 9 }, () => ({ count: 5 })));
+});
+
+test('a count the instance had not finished is asked for once more', async () => {
+  /* The first ask starts the computation and the instance keeps the result, so the
+     answer is usually waiting once the batch is done and nothing else is in flight.
+     Without this, one slow project took the project list down with it - and with it
+     every check that needs one, nine of twenty-two on a live instance. */
+  const asked: string[] = [];
+  const slowOne: ApiTransport = <T>(_path: string, options: RequestOptions = {}) => {
+    const query = String((options.body as {query?: string} | undefined)?.query ?? '');
+    asked.push(query);
+    // Never finished while the batch ran; ready afterwards, as the endpoint does.
+    const done = query !== 'slow' || asked.filter((q) => q === 'slow').length > 3;
+    return Promise.resolve({ count: done ? 4 : -1 } as T);
+  };
+  const client = new YouTrackApiClient(slowOne, { gapMs: 0, countBudgetMs: 30 });
+
+  const results = await client.countMany(['fine', 'slow', 'also fine']);
+
+  assert.deepEqual(results, [{ count: 4 }, { count: 4 }, { count: 4 }]);
+  assert.ok(
+    asked.filter((q) => q === 'slow').length > 3,
+    'the unfinished count was asked for again after the batch',
+  );
+});
+
+test('one refused count does not reject the ones queued behind it', async () => {
+  // They share a lane, so a failure must not travel along it.
+  let asked = 0;
+  const picky: ApiTransport = <T>() => {
+    asked++;
+    if (asked === 1) {
+      return Promise.reject(new ApiError(400, 'issuesGetter/count', 'unparseable'));
+    }
+    return Promise.resolve({ count: 3 } as T);
+  };
+  const client = new YouTrackApiClient(picky, { gapMs: 0 });
+
+  const results = await client.countMany(['broken', 'fine', 'fine too']);
+
+  const refused = results[0];
+  assert.ok(refused && 'failed' in refused, 'the refused one says so');
+  /* Named, not merely failed: without the reason this test passed once against a
+     transport that threw for an entirely different cause. */
+  assert.match(refused.failed, /400/);
+  assert.match(refused.failed, /query: broken/);
+  assert.deepEqual(results.slice(1), [{ count: 3 }, { count: 3 }]);
+});
 
 test('waiting for a turn costs one wake-up per request, not one per gap', async () => {
   /* A check can hand a whole instance to countMany at once, and the pacing used to
