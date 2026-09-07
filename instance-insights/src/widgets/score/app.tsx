@@ -61,47 +61,6 @@ function deltaLabel(delta: number | null): string {
 }
 
 /**
- * A tile placed before this layout existed keeps its stored height, which can be as
- * little as 104 px, so the content is built to fit that: the score and what it is
- * out of on one line, the count below it, date and action on the next. Newly placed
- * tiles get more room from the manifest and simply have air left over.
- */
-const ScoreView: React.FunctionComponent<{lastScan: ScanAggregate}> = ({
-  lastScan
-}) => {
-  const measured = scoreBeforeDecisions(lastScan);
-  const onDecisions =
-    measured === null || lastScan.score === null
-      ? 0
-      : oneDecimal(lastScan.score - measured);
-  return (
-    <div className="score-tile__figures">
-      <div className="score-tile__value">
-        {lastScan.score === null ? 'n/a' : scoreText(lastScan.score)}
-        {/* In words rather than as a slash: a maximum in small print beside the
-            figure is read as decoration, and then nothing on the tile says which
-            direction on this scale is the good one. */}
-        <span className="score-tile__max">{' out of 100'}</span>
-      </div>
-      <p className="score-tile__offer">
-        {plural(lastScan.findings, 'finding')}
-        {/* A tile that only shows the raised score sends its reader looking for a
-            change in the instance. The difference rather than a second score:
-            "67.8 as measured" needs a sentence to mean anything and a tile has one
-            line - and the unit is named, or the figure reads as half a finding
-            beside the count in front of it. Set in the quieter colour, because it
-            belongs to the score above rather than to that count. */}
-        {onDecisions === 0 ? null : (
-          <span className="score-tile__measured">
-            {`, ${scoreText(onDecisions)} points rest on a decision`}
-          </span>
-        )}
-      </p>
-    </div>
-  );
-};
-
-/**
  * The way to the report, or a sentence where a link cannot be built.
  *
  * What the reader gains rather than where it goes: the report is where the findings
@@ -125,18 +84,68 @@ const ToReport: React.FunctionComponent<{href: string | null; label: string}> = 
     </Button>
   );
 
+/** When the scan was, and what the score did since the one before it. */
+/**
+ * The score, and beside it the way to the report.
+ *
+ * The action sits on this line rather than next to the date below it, and that is a
+ * measurement rather than a preference: a tile of the width the manifest asks for
+ * leaves 191 px beside the button, the date with a movement behind it needs up to
+ * 223 px, and the line it could not hold wrapped into a fourth row the tile has no
+ * height for. On this line the button has room to spare, and every line below it
+ * gets the full width.
+ */
+const ScoreHead: React.FunctionComponent<{
+  lastScan: ScanAggregate;
+  reportHref: string | null;
+}> = ({lastScan, reportHref}) => (
+  <div className="score-tile__head">
+    <div className="score-tile__value">
+      {lastScan.score === null ? 'n/a' : scoreText(lastScan.score)}
+      {/* In words rather than as a slash: a maximum in small print beside the
+          figure is read as decoration, and then nothing on the tile says which
+          direction on this scale is the good one. */}
+      <span className="score-tile__max">{' out of 100'}</span>
+    </div>
+    <ToReport href={reportHref} label={'Findings and a new scan'}/>
+  </div>
+);
+
+/** How many findings the score is made of, and what a decision holds up. */
+const ScoreOffer: React.FunctionComponent<{lastScan: ScanAggregate}> = ({
+  lastScan
+}) => {
+  const measured = scoreBeforeDecisions(lastScan);
+  const onDecisions =
+    measured === null || lastScan.score === null
+      ? 0
+      : oneDecimal(lastScan.score - measured);
+  return (
+    <p className="score-tile__offer">
+      {plural(lastScan.findings, 'finding')}
+      {/* A tile that only shows the raised score sends its reader looking for a
+          change in the instance. The difference rather than a second score:
+          "67.8 as measured" needs a sentence to mean anything and a tile has one
+          line - and the unit is named, or the figure reads as half a finding
+          beside the count in front of it. Set in the quieter colour, because it
+          belongs to the score above rather than to that count. */}
+      {onDecisions === 0 ? null : (
+        <span className="score-tile__measured">
+          {`, ${scoreText(onDecisions)} points rest on a decision`}
+        </span>
+      )}
+    </p>
+  );
+};
+
 const ScoreFoot: React.FunctionComponent<{
   lastScan: ScanAggregate;
   delta: number | null;
-  reportHref: string | null;
-}> = ({lastScan, delta, reportHref}) => (
-  <div className="score-tile__foot">
-    <p className="score-tile__at">
-      {`As of ${dateText(new Date(lastScan.at))}`}
-      {deltaLabel(delta)}
-    </p>
-    <ToReport href={reportHref} label={'Findings and a new scan'}/>
-  </div>
+}> = ({lastScan, delta}) => (
+  <p className="score-tile__at">
+    {`As of ${dateText(new Date(lastScan.at))}`}
+    {deltaLabel(delta)}
+  </p>
 );
 
 /**
@@ -176,9 +185,10 @@ const ReadyTile: React.FunctionComponent<{
   }
   return (
     <div className="score-tile">
-      <ScoreView lastScan={lastScan}/>
+      <ScoreHead lastScan={lastScan} reportHref={reportHref}/>
+      <ScoreOffer lastScan={lastScan}/>
       {elsewhere}
-      <ScoreFoot lastScan={lastScan} delta={measuredDelta} reportHref={reportHref}/>
+      <ScoreFoot lastScan={lastScan} delta={measuredDelta}/>
     </div>
   );
 };

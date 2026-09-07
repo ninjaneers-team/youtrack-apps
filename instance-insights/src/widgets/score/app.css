@@ -28,20 +28,15 @@
   min-height: 6rem;
 }
 
-/* The score and what it is out of on one line, so the action below stays inside
-   the tile. */
-.score-tile__figures {
+/* The score on the left of the top line and the action on its right, both on the
+   baseline of the figure. The lines below it then have the whole width, which is
+   what keeps the date and the movement behind it on one line. */
+.score-tile__head {
   display: flex;
   align-items: baseline;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.score-tile__foot {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+  flex-wrap: wrap;
 }
 
 /* The same figure as on the report page, in the size a tile has room for: tight
