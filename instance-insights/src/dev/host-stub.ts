@@ -278,11 +278,11 @@ export function installHostStub(): void {
   const host = {
     fetchYouTrack,
     fetchApp: stubbed ? fetchAppStub : fetchAppReal,
-    alert: (message: string) => note(`host.alert: ${message}`),
-    enterModalMode: async () => undefined,
-    exitModalMode: async () => undefined,
-    collapse: () => undefined,
-    closeWidget: () => undefined,
+    alert: (message: string): void => note(`host.alert: ${message}`),
+    enterModalMode: async (): Promise<undefined> => undefined,
+    exitModalMode: async (): Promise<undefined> => undefined,
+    collapse: (): undefined => undefined,
+    closeWidget: (): undefined => undefined,
   };
 
   Object.defineProperty(globalThis, 'YTApp', {

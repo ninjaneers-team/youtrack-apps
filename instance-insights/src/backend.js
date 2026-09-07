@@ -19,6 +19,50 @@
  * Widgets reach these endpoints through src/app-state.ts.
  */
 
+/* The shapes below are declared once, in the engine, and named here through JSDoc.
+   A comment carries no code into the app package, so the handler stays the plain
+   JavaScript YouTrack runs - and a change to a stored shape now fails the type
+   check instead of reaching an instance.
+
+   What arrives is `unknown` until it has been checked, deliberately: a widget of an
+   older version, a hand-edited property or a truncated write are all things this
+   handler has to survive rather than trust. */
+
+/** @typedef {import('./stored-run.ts').StoredRun} StoredRun */
+/** @typedef {import('./stored-run.ts').StoredCheck} StoredCheck */
+/** @typedef {import('./stored-run.ts').StoredFinding} StoredFinding */
+/** @typedef {import('./types.ts').FindingItem} FindingItem */
+/** @typedef {import('./trend.ts').ScanAggregate} ScanAggregate */
+/** @typedef {import('./stored-run.ts').IgnoredItem} IgnoredItem */
+
+/**
+ * The properties this app owns, every one of them declared in
+ * src/entity-extensions.json. An undeclared write is discarded without an error,
+ * so the two sides are compared by a test rather than by attention.
+ *
+ * All strings: an extension property holds a primitive, so every structure in here
+ * is JSON that this file writes and parses.
+ *
+ * @typedef {object} StoredProperties
+ * @property {string} [lastScan]
+ * @property {string} [lastRun]
+ * @property {string} [scanHistory]
+ * @property {string} [ignoredChecks]
+ * @property {string} [ignoredItems]
+ * @property {string | null} [scanStarted] - Cleared with null when a scan ends,
+ *   which is the only property this handler ever takes back out.
+ */
+
+/**
+ * What YouTrack hands a handler. Only the members this file uses are named: a
+ * shape that claimed more would be a guess about the platform.
+ *
+ * @typedef {object} HandlerCtx
+ * @property {{ extensionProperties: StoredProperties }} globalStorage
+ * @property {{ json(): unknown, headers?: Array<{ name: string, value: string }> }} request
+ * @property {{ code: number, json(body: unknown): void }} response
+ */
+
 /**
  * How many scan aggregates the trend keeps. An instance gets re-checked monthly at
  * most, so this is a couple of years of history in a few hundred bytes.
@@ -96,19 +140,56 @@ const MAX_CHECKS = 200;
  * `test/backend.test.ts` sends every value the app itself produces through the
  * handler, so a word added to one of these lists cannot be forgotten here.
  */
+/** @type {readonly import('./engine.ts').CheckStatus[]} */
 const STATUSES = ['finding', 'clean', 'skipped', 'failed'];
+/** @type {readonly import('./types.ts').Severity[]} */
 const SEVERITIES = ['critical', 'high', 'medium', 'low'];
+/** @type {readonly import('./types.ts').ItemKind[]} */
 const ITEM_KINDS = ['project', 'board', 'field', 'field-group', 'group', 'account'];
 
-/** The value when it is one of the words we know, or null. */
+/**
+ * The fields of a value that is an object, or null when it is not one.
+ *
+ * Reading a field off something that is not an object is not an error in
+ * JavaScript - it is `undefined`, and every check below then quietly passes on a
+ * value nobody meant. Naming the step puts that guard in one place instead of one
+ * per caller, and it is what lets the type checker follow the validation.
+ *
+ * @param {unknown} value
+ * @returns {Record<string, unknown> | null}
+ */
+function fieldsOf(value) {
+  if (value === null || typeof value !== 'object') {
+    return null;
+  }
+  return /** @type {Record<string, unknown>} */ (value);
+}
+
+/**
+ * The value when it is one of the words we know, or null.
+ *
+ * @template {string} Word
+ * @param {readonly Word[]} known - The values this app accepts.
+ * @param {unknown} value
+ * @returns {Word | null} The value when it is one of them, null otherwise.
+ */
 function oneOf(known, value) {
-  return typeof value === 'string' && known.indexOf(value) !== -1 ? value : null;
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const word = /** @type {Word} */ (value);
+  return known.indexOf(word) === -1 ? null : word;
 }
 
 /** A timestamp we can put on a trend: ISO 8601 in UTC, as the report sends it. */
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 
-/** An identifier as stored, or null when it is not one. */
+/**
+ * An identifier as stored, or null when it is not one.
+ *
+ * @param {unknown} value
+ * @returns {string | null}
+ */
 function identifier(value) {
   if (typeof value !== 'string' || value.length === 0 || value.length > MAX_ID_LENGTH) {
     return null;
@@ -123,17 +204,25 @@ function identifier(value) {
  * field off it throws, and an exception in the sandbox is a 500 with no answer
  * at all. As an empty object it fails the checks below and the caller is told
  * which field is missing.
+ *
+ * @param {HandlerCtx} ctx
+ * @returns {Record<string, unknown>}
  */
 function bodyOf(ctx) {
   try {
-    const body = ctx.request.json();
-    return body && typeof body === 'object' ? body : {};
+    const body = fieldsOf(ctx.request.json());
+    return body === null ? {} : body;
   } catch (e) {
     return {};
   }
 }
 
-/** Global storage starts out empty; treat a missing value as the neutral default. */
+/**
+ * Global storage starts out empty; treat a missing value as the neutral default.
+ *
+ * @param {HandlerCtx} ctx
+ * @returns {string[]}
+ */
 function readIgnored(ctx) {
   const raw = ctx.globalStorage.extensionProperties.ignoredChecks;
   if (!raw) {
@@ -161,6 +250,9 @@ function readIgnored(ctx) {
  *
  * Stored flat rather than nested, so the handler can copy field by field and a
  * malformed entry can be dropped on its own.
+ *
+ * @param {HandlerCtx} ctx
+ * @returns {IgnoredItem[]}
  */
 function readIgnoredItems(ctx) {
   const raw = ctx.globalStorage.extensionProperties.ignoredItems;
@@ -191,10 +283,17 @@ function readIgnoredItems(ctx) {
  * Both halves go through the same gate as a marked check, and for the same reason:
  * what is read here is written back on the next mark, so a value nobody meant
  * would settle in storage for good.
+ *
+ * @param {unknown} entry
+ * @returns {IgnoredItem | null}
  */
 function markOf(entry) {
-  const check = entry ? identifier(entry.check) : null;
-  const item = entry ? identifier(entry.item) : null;
+  const fields = fieldsOf(entry);
+  if (fields === null) {
+    return null;
+  }
+  const check = identifier(fields.check);
+  const item = identifier(fields.item);
   return check !== null && item !== null ? {check: check, item: item} : null;
 }
 
@@ -205,6 +304,9 @@ function markOf(entry) {
  * turn it into a date, and a value no date can be made of throws while the view
  * renders - which leaves an empty frame that reloading does not cure. What is
  * stored today always passes; what a version before this one stored may not.
+ *
+ * @param {HandlerCtx} ctx
+ * @returns {ScanAggregate | null}
  */
 function readLastScan(ctx) {
   const raw = ctx.globalStorage.extensionProperties.lastScan;
@@ -219,7 +321,12 @@ function readLastScan(ctx) {
   }
 }
 
-/** Newest first. Entries without a timestamp cannot be placed on a trend. */
+/**
+ * Newest first. Entries without a timestamp cannot be placed on a trend.
+ *
+ * @param {HandlerCtx} ctx
+ * @returns {ScanAggregate[]}
+ */
 function readHistory(ctx) {
   const raw = ctx.globalStorage.extensionProperties.scanHistory;
   const parsed = parseHistory(raw);
@@ -231,6 +338,12 @@ function readHistory(ctx) {
   return last ? [last] : [];
 }
 
+/**
+ * The trend as stored, or an empty one where there is nothing to read.
+ *
+ * @param {string | undefined} raw
+ * @returns {ScanAggregate[]}
+ */
 function parseHistory(raw) {
   if (!raw) {
     return [];
@@ -254,6 +367,9 @@ function parseHistory(raw) {
  * Three primitives per check and nothing else: our own check ID, the status, and
  * the ratio. This is what the trend is made of, and twenty-four of them are kept -
  * so it stays as small as it was before the findings were kept alongside it.
+ *
+ * @param {unknown} raw
+ * @returns {ScanAggregate['checks']}
  */
 function checkAggregates(raw) {
   if (!Array.isArray(raw)) {
@@ -280,13 +396,21 @@ function checkAggregates(raw) {
  * Anything that is not a timestamp this app wrote is treated as nothing: the value
  * only ever becomes a sentence about age, and a sentence about a broken value would
  * be worse than no sentence.
+ *
+ * @param {HandlerCtx} ctx
+ * @returns {string | null}
  */
 function readScanStarted(ctx) {
   const raw = ctx.globalStorage.extensionProperties.scanStarted;
   return typeof raw === 'string' && ISO_INSTANT.test(raw) ? raw : null;
 }
 
-/** The findings of the last scan, or null when none were kept or they are broken. */
+/**
+ * The findings of the last scan, or null when none were kept or they are broken.
+ *
+ * @param {HandlerCtx} ctx
+ * @returns {StoredRun | null}
+ */
 function readLastRun(ctx) {
   const raw = ctx.globalStorage.extensionProperties.lastRun;
   if (!raw) {
@@ -310,17 +434,29 @@ function readLastRun(ctx) {
  * A finding and each object it names carry numbers the report may leave out, and
  * they are all optional in the same way: absent stays absent, present becomes a
  * number.
+ *
+ * @param {object} target - Cast once here rather than at each of the callers.
+ * @param {string} name
+ * @param {unknown} value
+ * @returns {void}
  */
 function copyNumber(target, name, value) {
   if (value !== undefined && value !== null) {
-    target[name] = Number(value);
+    /** @type {Record<string, unknown>} */ (target)[name] = Number(value);
   }
 }
 
-/** The same for the texts the app writes itself: a sentence, a label, a key. */
+/**
+ * The same for the texts the app writes itself: a sentence, a label, a key.
+ *
+ * @param {object} target - Cast once here rather than at each of the callers.
+ * @param {string} name
+ * @param {unknown} value
+ * @returns {void}
+ */
 function copyText(target, name, value) {
   if (value) {
-    target[name] = String(value);
+    /** @type {Record<string, unknown>} */ (target)[name] = String(value);
   }
 }
 
@@ -330,6 +466,10 @@ function copyText(target, name, value) {
  * The same principle as the aggregates: nothing is passed through. Every value is
  * copied under a known name and converted, so a field the report gains tomorrow
  * cannot carry issue content into storage by itself.
+ *
+ * @param {unknown} raw
+ * @param {boolean} withItems - False leaves every object list out.
+ * @returns {StoredCheck[]}
  */
 function runChecks(raw, withItems) {
   if (!Array.isArray(raw)) {
@@ -346,7 +486,12 @@ function runChecks(raw, withItems) {
   return checks;
 }
 
-/** What a stored check is made of besides its finding, or null when it is not one. */
+/**
+ * What a stored check is made of besides its finding, or null when it is not one.
+ *
+ * @param {Record<string, unknown>} entry
+ * @returns {StoredCheck | null}
+ */
 function checkShell(entry) {
   const status = entry ? oneOf(STATUSES, entry.status) : null;
   if (status === null || identifier(entry.id) === null) {
@@ -357,15 +502,22 @@ function checkShell(entry) {
   return check;
 }
 
-/** One check of a run, or null when nothing about it can be shown. */
+/**
+ * One check of a run, or null when nothing about it can be shown.
+ *
+ * @param {unknown} entry
+ * @param {boolean} withItems
+ * @returns {StoredCheck | null}
+ */
 function runCheck(entry, withItems) {
-  const check = checkShell(entry);
-  if (check === null || !entry.finding) {
+  const fields = fieldsOf(entry);
+  const check = fields === null ? null : checkShell(fields);
+  if (fields === null || check === null || !fields.finding) {
     return check;
   }
   // Never the objects of a check whose subject is people, whatever was sent.
   const named = CHECKS_NAMING_PEOPLE.indexOf(check.id) === -1;
-  const finding = runFinding(entry.finding, withItems && named);
+  const finding = runFinding(fields.finding, withItems && named);
   /* A finding without a severity cannot be shown the way the report shows one -
      it sorts by it and colours by it - so the check is left out rather than
      restored as a finding that says nothing. */
@@ -376,32 +528,50 @@ function runCheck(entry, withItems) {
   return check;
 }
 
+/**
+ * One finding as stored, field by field, or null when it is not one.
+ *
+ * @param {unknown} raw
+ * @param {boolean} withItems
+ * @returns {NonNullable<StoredCheck['finding']> | null}
+ */
 function runFinding(raw, withItems) {
-  const severity = oneOf(SEVERITIES, raw.severity);
+  const fields = fieldsOf(raw);
+  if (fields === null) {
+    return null;
+  }
+  const severity = oneOf(SEVERITIES, fields.severity);
   if (severity === null) {
     return null;
   }
+  /** @type {NonNullable<StoredCheck['finding']>} */
   const finding = {
     severity: severity,
-    headline: String(raw.headline),
-    ratio: Number(raw.ratio) || 0,
-    evidence: runEvidence(raw.evidence)
+    headline: String(fields.headline),
+    ratio: Number(fields.ratio) || 0,
+    evidence: runEvidence(fields.evidence)
   };
-  copyNumber(finding, 'total', raw.total);
-  copyNumber(finding, 'affected', raw.affected);
-  copyText(finding, 'query', raw.query);
+  copyNumber(finding, 'total', fields.total);
+  copyNumber(finding, 'affected', fields.affected);
+  copyText(finding, 'query', fields.query);
   /* An unknown kind is dropped rather than kept: the report turns the kind into a
      link, and a name without a link is still true of the instance. */
-  const kind = oneOf(ITEM_KINDS, raw.itemKind);
+  const kind = oneOf(ITEM_KINDS, fields.itemKind);
   if (kind !== null) {
     finding.itemKind = kind;
   }
-  if (withItems && Array.isArray(raw.items)) {
-    finding.items = runItems(raw.items);
+  if (withItems && Array.isArray(fields.items)) {
+    finding.items = runItems(fields.items);
   }
   return finding;
 }
 
+/**
+ * The labelled numbers under a headline, as stored.
+ *
+ * @param {unknown} raw
+ * @returns {NonNullable<StoredFinding['evidence']>}
+ */
 function runEvidence(raw) {
   if (!Array.isArray(raw)) {
     return [];
@@ -418,7 +588,14 @@ function runEvidence(raw) {
   return rows;
 }
 
+/**
+ * The objects a finding names, as stored.
+ *
+ * @param {readonly unknown[]} raw
+ * @returns {FindingItem[]}
+ */
 function runItems(raw) {
+  /** @type {FindingItem[]} */
   const rows = [];
   for (let i = 0; i < raw.length; i++) {
     const item = runItem(raw[i]);
@@ -429,20 +606,27 @@ function runItems(raw) {
   return rows;
 }
 
-/** One object a finding names, or null when it carries no id to mark it by. */
+/**
+ * One object a finding names, or null when it carries no id to mark it by.
+ *
+ * @param {unknown} entry
+ * @returns {FindingItem | null}
+ */
 function runItem(entry) {
+  const fields = fieldsOf(entry);
   // The id is what a mark is stored under later, so it goes through the same gate.
-  if (!entry || identifier(entry.id) === null) {
+  if (fields === null || identifier(fields.id) === null) {
     return null;
   }
-  const item = {id: String(entry.id), label: String(entry.label)};
-  copyText(item, 'target', entry.target);
-  copyText(item, 'detail', entry.detail);
+  /** @type {FindingItem} */
+  const item = {id: String(fields.id), label: String(fields.label)};
+  copyText(item, 'target', fields.target);
+  copyText(item, 'detail', fields.detail);
   /* Kept because the score depends on them: without these two numbers a marked
      board comes back from storage weighing the same as any other, and the score
      of the restored run would not be the score that was shown. */
-  copyNumber(item, 'affected', entry.affected);
-  copyNumber(item, 'measured', entry.measured);
+  copyNumber(item, 'affected', fields.affected);
+  copyNumber(item, 'measured', fields.measured);
   return item;
 }
 
@@ -453,8 +637,13 @@ function runItem(entry) {
  * presents itself as a whole one is worse than a count and a sentence saying the
  * names were not kept. If even that does not fit, the previous run stays - it is
  * older, it says so, and it is readable.
+ *
+ * @param {HandlerCtx} ctx
+ * @param {Record<string, unknown>} body
+ * @returns {StoredRun | null} The run as stored, or the previous one when this did not fit.
  */
 function writeRun(ctx, body) {
+  /** @type {StoredRun} */
   const run = {
     at: String(body.at),
     requests: Number(body.requests) || 0,
@@ -483,6 +672,10 @@ function writeRun(ctx, body) {
  * Marking a finding as intentional re-scores the scan that is already stored, and
  * the report saves it again under the same timestamp. That revises the newest point
  * instead of inventing a second one, so the trend counts scans, not clicks.
+ *
+ * @param {ScanAggregate[]} history
+ * @param {ScanAggregate} aggregate
+ * @returns {ScanAggregate[]}
  */
 function withScan(history, aggregate) {
   const kept = history.filter(function other(entry) {
@@ -504,6 +697,9 @@ function withScan(history, aggregate) {
  * instance - in the development entry it is a local dev server. The handler sees the
  * request and with it the real host. Where the two agree, the report may build links;
  * otherwise it leaves them out. Nothing is guessed.
+ *
+ * @param {HandlerCtx} ctx
+ * @returns {string | null}
  */
 function requestedHost(ctx) {
   const headers = (ctx.request && ctx.request.headers) || [];
@@ -524,6 +720,9 @@ function requestedHost(ctx) {
  * leaves the second score out altogether - so absent is a value here. Anything
  * that is not a number becomes absent too, rather than NaN: JSON writes that as
  * null, and it would come back as a point on the trend at no height.
+ *
+ * @param {unknown} value
+ * @returns {number | null}
  */
 function numberOrNull(value) {
   const number = Number(value);
@@ -535,6 +734,12 @@ function numberOrNull(value) {
  *
  * The stored identifier is a project key, a board id, a field or a group name -
  * configuration of the instance, not its content and not a person.
+ *
+ * @param {HandlerCtx} ctx
+ * @param {string} checkId - Already through `identifier`, at the endpoint.
+ * @param {string} item - The same.
+ * @param {boolean} ignored - True adds the mark, false takes it off.
+ * @returns {void} It answers on the response rather than returning the marks.
  */
 function markItem(ctx, checkId, item, ignored) {
   if (CHECKS_NAMING_PEOPLE.indexOf(checkId) !== -1) {
@@ -570,6 +775,7 @@ exports.httpHandler = {
       // is harmless in itself - a score, counts, ratios - but it is a statement
       // about the instance, and the app answers those to administrators.
       permissions: ['ADMIN_UPDATE_APP'],
+      /** @param {HandlerCtx} ctx @returns {void} */
       handle: function handle(ctx) {
         ctx.response.json({
           lastScan: readLastScan(ctx),
@@ -586,6 +792,7 @@ exports.httpHandler = {
       method: 'POST',
       path: 'scan',
       permissions: ['ADMIN_UPDATE_APP'],
+      /** @param {HandlerCtx} ctx @returns {void} */
       handle: function handle(ctx) {
         const body = bodyOf(ctx);
         /* Every stored value hangs off this timestamp: the trend is ordered by it,
@@ -624,6 +831,7 @@ exports.httpHandler = {
          scans at once ask the instance everything twice; this is what lets the
          second one say so first. Deliberately without a lease: a scan whose browser
          went away would otherwise block the app until an invented expiry passed. */
+      /** @param {HandlerCtx} ctx @returns {void} */
       handle: function handle(ctx) {
         const body = bodyOf(ctx);
         if (typeof body.at !== 'string' || !ISO_INSTANT.test(body.at)) {
@@ -647,6 +855,7 @@ exports.httpHandler = {
       method: 'POST',
       path: 'ignore',
       permissions: ['ADMIN_UPDATE_APP'],
+      /** @param {HandlerCtx} ctx @returns {void} */
       handle: function handle(ctx) {
         const body = bodyOf(ctx);
         const checkId = identifier(body.checkId);

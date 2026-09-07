@@ -259,6 +259,14 @@ npm run check
 | `npm run upload` | Installs the built app into an instance |
 | `npm run deploy` | Builds and installs into the instance in `.env`, with a build number in the version so YouTrack serves the new widget instead of its cached one |
 
+The code runs in four places, and each is type-checked on its own terms: the engine
+and its tests in Node, the widgets in a browser, the Vite configuration, and the
+HTTP handler in YouTrack's own sandbox. The handler is the odd one - it is copied
+into the package as plain JavaScript, because that is what the sandbox runs - so its
+types live in JSDoc, and it names the stored shapes from the engine rather than
+repeating them. A comment carries no code into the package, and a change to a stored
+shape fails the check instead of reaching an instance.
+
 Copy `.env.example` to `.env` for the base URL and token of your test instance. It is
 gitignored, and the dev server keeps the token on the server side so it never reaches
 the browser.

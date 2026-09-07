@@ -10,7 +10,7 @@
   },
   "scripts": {
     "check": "npm run typecheck && npm test",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.app.json && tsc -p tsconfig.node.json",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p tsconfig.handler.json",
     "test": "node --test \"test/**/*.test.ts\"",
     "test:watch": "node --test --watch \"test/**/*.test.ts\"",
     "probe": "node --env-file=.env scripts/probe-api.ts",

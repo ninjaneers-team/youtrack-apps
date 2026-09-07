@@ -38,6 +38,18 @@ import type {
 
 const STATUSES: readonly CheckStatus[] = ['finding', 'clean', 'skipped', 'failed'];
 
+/**
+ * One object of one check, marked as intentional.
+ *
+ * Here rather than beside the client that reads it: this is a shape the handler
+ * stores, and the handler names it too - from a file that ships as JavaScript and
+ * therefore cannot reach a module holding a browser global.
+ */
+export interface IgnoredItem {
+  check: string;
+  item: string;
+}
+
 /** One check of a stored run: its own id, what came of it, and what it measured. */
 export interface StoredCheck {
   id: string;

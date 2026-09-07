@@ -58,6 +58,7 @@ export default tseslint.config(
         },
       ],
       "react/jsx-no-literals": "off",
+      "@typescript-eslint/explicit-function-return-type": "error",
 
       /* Instance data stays in memory and in the app's own storage, which sits
          behind the instance's permissions. Browser storage does not: the Host API
@@ -120,6 +121,10 @@ export default tseslint.config(
          accepts is only known as far as the app has run there: it uses const and
          template literals on the oldest version the manifest allows. */
       "@typescript-eslint/no-unused-vars": ["error", { caughtErrors: "none" }],
+      /* A return type cannot be annotated in a file that ships as JavaScript. What
+         this file gets instead is JSDoc that the compiler reads, which is the only
+         form of type checking available to it. */
+      "@typescript-eslint/explicit-function-return-type": "off",
     },
   },
   // Data files are linted by the same command as the code. A workflow or a manifest

@@ -256,6 +256,10 @@ interface RawAgile {
     columns?: RawColumn[] | null;
   } | null;
 }
+/** One activity entry, asked for with `fields=timestamp` and nothing else. */
+interface RawActivity {
+  timestamp?: unknown;
+}
 interface RawGroup {
   id: string;
   name: string;
@@ -846,7 +850,7 @@ export class YouTrackApiClient implements YouTrackClient {
    * is the last time this account did anything at all.
    */
   async lastActivity(userId: string): Promise<number | null> {
-    const items = listOf<{ timestamp?: unknown }>(
+    const items = listOf<RawActivity>(
       PATHS.activities,
       await this.request<unknown>(PATHS.activities, {
         query: {

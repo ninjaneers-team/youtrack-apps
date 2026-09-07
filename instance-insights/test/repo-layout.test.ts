@@ -233,6 +233,7 @@ test('the sources are plain ASCII', () => {
     'tsconfig.json',
     'tsconfig.app.json',
     'tsconfig.node.json',
+    'tsconfig.handler.json',
     'vite.config.ts',
     'eslint.config.mjs',
   ];

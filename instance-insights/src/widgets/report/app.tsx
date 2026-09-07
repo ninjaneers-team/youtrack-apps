@@ -1571,7 +1571,7 @@ const ScanRunning: React.FunctionComponent<{
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), MS_PER_SECOND);
-    return () => clearInterval(tick);
+    return (): void => clearInterval(tick);
   }, []);
   return (
     <div className="report__loader">

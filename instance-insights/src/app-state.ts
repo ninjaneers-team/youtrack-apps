@@ -9,10 +9,10 @@
  */
 
 import type { IgnoredItems } from './engine.ts';
-import type { ScanUpload, StoredRun } from './stored-run.ts';
+import type { IgnoredItem, ScanUpload, StoredRun } from './stored-run.ts';
 import type { ScanAggregate } from './trend.ts';
 
-export type { ScanAggregate, ScanUpload, StoredRun };
+export type { IgnoredItem, ScanAggregate, ScanUpload, StoredRun };
 
 type Host = Awaited<ReturnType<typeof YTApp.register>>;
 
@@ -23,12 +23,6 @@ const ENDPOINTS = {
   started: 'backend/started',
   ignore: 'backend/ignore',
 } as const;
-
-/** One object of one check, marked as intentional. */
-export interface IgnoredItem {
-  check: string;
-  item: string;
-}
 
 export interface AppState {
   lastScan: ScanAggregate | null;
@@ -88,6 +82,17 @@ export interface IgnoredState {
   ignoredItems: IgnoredItem[];
 }
 
+/**
+ * What the handler answers when a scan is saved: the trend with it already on.
+ *
+ * Named rather than written into the call, like the two reads beside it - the
+ * shape the handler promises belongs where it can be found, not at one of its
+ * callers.
+ */
+export interface StoredTrend {
+  history: ScanAggregate[];
+}
+
 export interface AppStateClient {
   read(): Promise<AppState>;
   /** Returns the trend as stored, with this scan already on it. */
@@ -137,7 +142,7 @@ export function createAppStateClient(host: Host): AppStateClient {
     },
 
     async saveScan(upload: ScanUpload): Promise<ScanAggregate[]> {
-      const res = await host.fetchApp<{ history?: ScanAggregate[] }>(ENDPOINTS.scan, {
+      const res = await host.fetchApp<Partial<StoredTrend>>(ENDPOINTS.scan, {
         method: 'POST',
         body: upload,
       });
