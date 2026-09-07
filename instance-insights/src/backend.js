@@ -1,32 +1,32 @@
 /**
  * State shared by both widgets, kept in the app's global storage.
  *
- * Why a backend handler at all, when the scan itself runs in the frontend: the two
- * widgets cannot see each other's state. The Host API's own storage keeps values in
- * the visitor's browser and is not tied to a YouTrack account, so a scan started on
- * the report page would leave the dashboard tile claiming no scan had ever run. Both
- * facts are instance-wide by nature - the last score, and which
- * findings an administrator marked as intentional - so they belong in
- * AppGlobalStorage, which is YouTrack's mechanism for state owned by the app
- * rather than by an entity.
+ * Why a handler at all, when the scan runs in the frontend: the Host API's own
+ * storage keeps values in the visitor's browser and is not tied to a YouTrack
+ * account, so a scan started on the report page would leave the dashboard tile
+ * claiming no scan had ever run. The last score and the findings an administrator
+ * marked as intentional are facts about the instance, so they belong in
+ * AppGlobalStorage - YouTrack's mechanism for state owned by the app.
  *
  * What is stored: the numbers of the last twenty-four scans, and the findings of
  * the most recent one - headlines, the counts behind them, and the configuration
- * objects they name. No issue content, and no accounts: those the licence check
- * names are counted here and never written down.
+ * objects they name. No issue content and no accounts: the ones the licence check
+ * names are counted here and never written down. And nothing is passed through -
+ * every value is copied under a name this file knows, so a field the report gains
+ * tomorrow cannot carry instance content into storage by itself.
  *
- * Extension properties hold primitives, so both values are JSON in a string.
+ * Extension properties hold primitives, so each structure in here is JSON in a
+ * string, and what arrives is `unknown` until it has been checked: a widget of an
+ * older version, a hand-edited property and a truncated write are all things this
+ * handler survives rather than trusts.
+ *
  * Widgets reach these endpoints through src/app-state.ts.
  */
 
-/* The shapes below are declared once, in the engine, and named here through JSDoc.
-   A comment carries no code into the app package, so the handler stays the plain
-   JavaScript YouTrack runs - and a change to a stored shape now fails the type
-   check instead of reaching an instance.
-
-   What arrives is `unknown` until it has been checked, deliberately: a widget of an
-   older version, a hand-edited property or a truncated write are all things this
-   handler has to survive rather than trust. */
+/* The stored shapes are declared once, in the engine, and named here through
+   JSDoc: a comment carries no code into the app package, so the handler stays the
+   plain JavaScript YouTrack runs, and a change to a stored shape fails the type
+   check instead of reaching an instance. */
 
 /** @typedef {import('./stored-run.ts').StoredRun} StoredRun */
 /** @typedef {import('./stored-run.ts').StoredCheck} StoredCheck */
@@ -39,9 +39,6 @@
  * The properties this app owns, every one of them declared in
  * src/entity-extensions.json. An undeclared write is discarded without an error,
  * so the two sides are compared by a test rather than by attention.
- *
- * All strings: an extension property holds a primitive, so every structure in here
- * is JSON that this file writes and parses.
  *
  * @typedef {object} StoredProperties
  * @property {string} [lastScan]
@@ -80,26 +77,23 @@ const IGNORED_ITEMS_LIMIT = 500;
 /**
  * How long the stored run may get before its objects are left out.
  *
- * A single extension property holds 4 194 304 bytes, and YouTrack answers a longer
- * write with an error rather than a shortened value - so the whole scan would fail
- * to save at the moment it succeeded. Measured, a run costs a few kilobytes plus
- * some sixty bytes per named object, which puts even an instance of a thousand
- * projects two orders of magnitude below this budget. The distance to the real
- * limit is the room a name outside ASCII needs: the length counted here is in
- * characters, and a character can be three bytes.
+ * A property holds 4 194 304 bytes, and YouTrack answers a longer write with an
+ * error rather than a shortened value - the scan would fail to save at the moment
+ * it succeeded. Measured, a run costs a few kilobytes plus some sixty bytes per
+ * named object, so even an instance of a thousand projects stays two orders of
+ * magnitude below this. The distance to the real limit is the room a name outside
+ * ASCII needs: what is counted here are characters, and one can be three bytes.
  */
 const RUN_BYTES_LIMIT = 1048576;
 
 /**
  * Checks whose objects are people.
  *
- * Two things store an identifier - marking one object as intentional, and keeping
- * the findings of the last scan - and an account may become neither: project keys
- * and board ids are configuration, a login is a person. A reading an administrator
- * looks at is not the same as a dated list that stays behind, outliving both the
- * account it describes and the reason it was made. Enforced here rather than only
- * in the interface, because the interface is not the boundary.
- * `test/backend.test.ts` holds this against the catalog, so the two cannot drift.
+ * An administrator sees accounts anyway; keeping a dated list of them is something
+ * else, because it outlives both the account and the reason it was made. So a
+ * login never becomes a stored identifier, while a project key or a board id may.
+ * Enforced here rather than only in the interface, because the interface is not
+ * the boundary - and `test/backend.test.ts` holds it against the catalog.
  */
 const CHECKS_NAMING_PEOPLE = [
   'licensing.inactive-users',
@@ -109,18 +103,15 @@ const CHECKS_NAMING_PEOPLE = [
 /**
  * How long an identifier may be before the handler stops believing it.
  *
- * Every stored string comes from the app's own report, so this is not a defence
- * against an attacker - only an administrator reaches these endpoints at all. It is
- * a bound on the damage a mistake can do: without one, a wrong value would be
- * copied into storage until the property hits its four-megabyte ceiling, and from
- * then on every write of that property fails and the app stops keeping anything.
+ * Not a defence against an attacker - only an administrator reaches these
+ * endpoints - but a bound on the damage a mistake can do: a wrong value would be
+ * copied into storage until the property hits its ceiling, and from then on every
+ * write of it fails and the app keeps nothing at all.
  *
- * The number comes from that ceiling and not from a guess about YouTrack: at most
- * five hundred objects may be marked, so identifiers of this length occupy some 125
- * kilobytes - a thirtieth of what one property holds. It is long enough for an id
- * a check builds out of names in the instance, a project key and a field name side
- * by side, and short enough that a value nobody meant is refused rather than kept.
- * Our own check IDs are under forty characters.
+ * The number comes from that ceiling: five hundred marked objects of this length
+ * are some 125 kilobytes, a thirtieth of what one property holds. Long enough for
+ * an id built out of a project key and a field name side by side - our own check
+ * IDs are under forty characters - and short enough to refuse a value nobody meant.
  */
 const MAX_ID_LENGTH = 250;
 
@@ -130,18 +121,15 @@ const MAX_CHECKS = 200;
 /**
  * The words this app uses for its own values.
  *
- * Only an administrator reaches these endpoints and every string arrives from the
- * app's own report, so this is not a defence against an attacker. It is a bound on
- * the damage a mistake can do, and the reason it is a list and not a length: a
- * status is one of four words. Something else is not a longer status, it is a wrong
- * one - and a wrong one is kept, run after run, in a property that has no byte
- * budget of its own. The stored run has one, which is why the free text in it -
- * headlines, labels, the reason a check gave - is left at its natural length there:
- * over budget that run is stored without its objects, and a sentence is never cut
- * in half to make it fit.
+ * A list rather than a length, because a status is one of four words: something
+ * else is not a longer status but a wrong one, and a wrong one would be kept run
+ * after run in a property with no byte budget of its own. The free text of a run -
+ * headlines, labels, the reason a check gave - is left at its natural length
+ * instead, because the run itself has a budget: over it, the objects are dropped
+ * whole rather than a sentence cut in half.
  *
- * `test/backend.test.ts` sends every value the app itself produces through the
- * handler, so a word added to one of these lists cannot be forgotten here.
+ * `test/backend.test.ts` sends every value the app produces through the handler,
+ * so a word added to one of these lists cannot be forgotten here.
  */
 /** @type {readonly import('./engine.ts').CheckStatus[]} */
 const STATUSES = ['finding', 'clean', 'skipped', 'failed'];
@@ -161,10 +149,9 @@ const ITEM_KINDS = [
 /**
  * The fields of a value that is an object, or null when it is not one.
  *
- * Reading a field off something that is not an object is not an error in
- * JavaScript - it is `undefined`, and every check below then quietly passes on a
- * value nobody meant. Naming the step puts that guard in one place instead of one
- * per caller, and it is what lets the type checker follow the validation.
+ * Reading a field off something that is not an object gives `undefined` rather
+ * than an error, and every check below would then pass on a value nobody meant.
+ * One named guard instead of one per caller, and the type checker follows it.
  *
  * @param {unknown} value
  * @returns {Record<string, unknown> | null}
@@ -211,10 +198,8 @@ function identifier(value) {
 /**
  * The request body as the object every endpoint reads fields off.
  *
- * A body that is not an object is not a request this app makes - but reading a
- * field off it throws, and an exception in the sandbox is a 500 with no answer
- * at all. As an empty object it fails the checks below and the caller is told
- * which field is missing.
+ * Empty where there is none, because an exception in the sandbox is a 500 with no
+ * answer at all, while an empty body fails the checks below by name.
  *
  * @param {HandlerCtx} ctx
  * @returns {Record<string, unknown>}
@@ -229,31 +214,44 @@ function bodyOf(ctx) {
 }
 
 /**
- * Global storage starts out empty; treat a missing value as the neutral default.
+ * What one property holds, parsed, or null where there is nothing to read.
+ *
+ * Storage starts out empty, and a value in it was written by some version of this
+ * handler - so null covers both, and every reader below starts over on it.
+ *
+ * @param {HandlerCtx} ctx
+ * @param {'lastScan' | 'lastRun' | 'scanHistory' | 'ignoredChecks' | 'ignoredItems'} name
+ * @returns {any} Checked by the caller, which knows the fields it needs.
+ */
+function storedJson(ctx, name) {
+  const stored = ctx.globalStorage.extensionProperties[name];
+  if (!stored) {
+    return null;
+  }
+  try {
+    return JSON.parse(stored);
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * The checks marked as intentional.
+ *
+ * Filtered rather than passed on: what is read here is written back on the next
+ * mark, so a value nobody meant would settle in storage for good.
  *
  * @param {HandlerCtx} ctx
  * @returns {string[]}
  */
 function readIgnored(ctx) {
-  const raw = ctx.globalStorage.extensionProperties.ignoredChecks;
-  if (!raw) {
+  const storedChecks = storedJson(ctx, 'ignoredChecks');
+  if (!Array.isArray(storedChecks)) {
     return [];
   }
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    /* Filtered rather than passed on: what is read here is written back on the
-       next mark, so anything that is not one of our check IDs would settle in
-       storage for good. */
-    return parsed.filter(function usable(entry) {
-      return identifier(entry) !== null;
-    });
-  } catch (e) {
-    // Never let malformed storage break the report; start over instead.
-    return [];
-  }
+  return storedChecks.filter(function usable(entry) {
+    return identifier(entry) !== null;
+  });
 }
 
 /**
@@ -266,34 +264,24 @@ function readIgnored(ctx) {
  * @returns {IgnoredItem[]}
  */
 function readIgnoredItems(ctx) {
-  const raw = ctx.globalStorage.extensionProperties.ignoredItems;
-  if (!raw) {
+  const storedMarks = storedJson(ctx, 'ignoredItems');
+  if (!Array.isArray(storedMarks)) {
     return [];
   }
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
+  const rows = [];
+  for (let i = 0; i < storedMarks.length; i++) {
+    const mark = markOf(storedMarks[i]);
+    if (mark !== null) {
+      rows.push(mark);
     }
-    const rows = [];
-    for (let i = 0; i < parsed.length; i++) {
-      const mark = markOf(parsed[i]);
-      if (mark !== null) {
-        rows.push(mark);
-      }
-    }
-    return rows;
-  } catch (e) {
-    return [];
   }
+  return rows;
 }
 
 /**
  * One stored mark, or null when either half of it is not an identifier.
  *
- * Both halves go through the same gate as a marked check, and for the same reason:
- * what is read here is written back on the next mark, so a value nobody meant
- * would settle in storage for good.
+ * Both halves go through the same gate as a marked check, and for the same reason.
  *
  * @param {unknown} entry
  * @returns {IgnoredItem | null}
@@ -311,25 +299,16 @@ function markOf(entry) {
 /**
  * The aggregates of the last scan, or null.
  *
- * The timestamp is checked on the way out as well as on the way in: both widgets
- * turn it into a date, and a value no date can be made of throws while the view
- * renders - which leaves an empty frame that reloading does not cure. What is
- * stored today always passes; what a version before this one stored may not.
+ * Dated on the way out as well as on the way in: both widgets turn the timestamp
+ * into a date, and one no date can be made of throws while the view renders, which
+ * leaves an empty frame that reloading does not cure.
  *
  * @param {HandlerCtx} ctx
  * @returns {ScanAggregate | null}
  */
 function readLastScan(ctx) {
-  const raw = ctx.globalStorage.extensionProperties.lastScan;
-  if (!raw) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && ISO_INSTANT.test(parsed.at) ? parsed : null;
-  } catch (e) {
-    return null;
-  }
+  const storedScan = storedJson(ctx, 'lastScan');
+  return storedScan && ISO_INSTANT.test(storedScan.at) ? storedScan : null;
 }
 
 /**
@@ -339,10 +318,14 @@ function readLastScan(ctx) {
  * @returns {ScanAggregate[]}
  */
 function readHistory(ctx) {
-  const raw = ctx.globalStorage.extensionProperties.scanHistory;
-  const parsed = parseHistory(raw);
-  if (parsed.length > 0) {
-    return parsed;
+  const storedHistory = storedJson(ctx, 'scanHistory');
+  const dated = Array.isArray(storedHistory)
+    ? storedHistory.filter(function onATrend(entry) {
+      return entry && ISO_INSTANT.test(entry.at);
+    })
+    : [];
+  if (dated.length > 0) {
+    return dated;
   }
   // An instance that scanned before the trend existed still has that one scan.
   const last = readLastScan(ctx);
@@ -350,43 +333,19 @@ function readHistory(ctx) {
 }
 
 /**
- * The trend as stored, or an empty one where there is nothing to read.
+ * The per-check part of a scan: our own check ID, the status, and the ratio.
  *
- * @param {string | undefined} raw
- * @returns {ScanAggregate[]}
- */
-function parseHistory(raw) {
-  if (!raw) {
-    return [];
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed.filter(function dated(entry) {
-      return entry && ISO_INSTANT.test(entry.at);
-    });
-  } catch (e) {
-    return [];
-  }
-}
-
-/**
- * The per-check part of a scan, rebuilt field by field.
+ * Three primitives and nothing else, because twenty-four scans of them are kept -
+ * so the trend stays as small as it was before the findings were kept beside it.
  *
- * Three primitives per check and nothing else: our own check ID, the status, and
- * the ratio. This is what the trend is made of, and twenty-four of them are kept -
- * so it stays as small as it was before the findings were kept alongside it.
- *
- * @param {unknown} raw
+ * @param {unknown} sentChecks
  * @returns {ScanAggregate['checks']}
  */
-function checkAggregates(raw) {
-  if (!Array.isArray(raw)) {
+function checkAggregates(sentChecks) {
+  if (!Array.isArray(sentChecks)) {
     return [];
   }
-  return raw
+  return sentChecks
     .slice(0, MAX_CHECKS)
     .filter(function usable(entry) {
       return entry && identifier(entry.id) !== null && oneOf(STATUSES, entry.status);
@@ -404,16 +363,16 @@ function checkAggregates(raw) {
 /**
  * When a scan was last started, or null.
  *
- * Anything that is not a timestamp this app wrote is treated as nothing: the value
- * only ever becomes a sentence about age, and a sentence about a broken value would
- * be worse than no sentence.
+ * The value only ever becomes a sentence about age, and a sentence about a broken
+ * value would be worse than no sentence - so anything else counts as nothing.
  *
  * @param {HandlerCtx} ctx
  * @returns {string | null}
  */
 function readScanStarted(ctx) {
-  const raw = ctx.globalStorage.extensionProperties.scanStarted;
-  return typeof raw === 'string' && ISO_INSTANT.test(raw) ? raw : null;
+  // The one property that is a plain value rather than JSON.
+  const stored = ctx.globalStorage.extensionProperties.scanStarted;
+  return typeof stored === 'string' && ISO_INSTANT.test(stored) ? stored : null;
 }
 
 /**
@@ -423,28 +382,18 @@ function readScanStarted(ctx) {
  * @returns {StoredRun | null}
  */
 function readLastRun(ctx) {
-  const raw = ctx.globalStorage.extensionProperties.lastRun;
-  if (!raw) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    // Dated like the aggregates, and for the same reason: the report renders it.
-    return parsed && Array.isArray(parsed.checks) && ISO_INSTANT.test(parsed.at)
-      ? parsed
-      : null;
-  } catch (e) {
-    // A run that cannot be read is a run to scan again, not an error to show.
-    return null;
-  }
+  const storedRun = storedJson(ctx, 'lastRun');
+  // Dated like the aggregates, and for the same reason: the report renders it.
+  return storedRun && Array.isArray(storedRun.checks) && ISO_INSTANT.test(storedRun.at)
+    ? storedRun
+    : null;
 }
 
 /**
  * Copies a number under a name this app knows, when there is one to copy.
  *
- * A finding and each object it names carry numbers the report may leave out, and
- * they are all optional in the same way: absent stays absent, present becomes a
- * number.
+ * The numbers of a finding and of each object it names are optional in the same
+ * way: absent stays absent, present becomes a number.
  *
  * @param {object} target - Cast once here rather than at each of the callers.
  * @param {string} name
@@ -474,22 +423,18 @@ function copyText(target, name, value) {
 /**
  * The findings of one scan, rebuilt field by field.
  *
- * The same principle as the aggregates: nothing is passed through. Every value is
- * copied under a known name and converted, so a field the report gains tomorrow
- * cannot carry issue content into storage by itself.
- *
- * @param {unknown} raw
+ * @param {unknown} sentChecks
  * @param {boolean} withItems - False leaves every object list out.
  * @returns {StoredCheck[]}
  */
-function runChecks(raw, withItems) {
-  if (!Array.isArray(raw)) {
+function runChecks(sentChecks, withItems) {
+  if (!Array.isArray(sentChecks)) {
     return [];
   }
   const checks = [];
-  const upTo = Math.min(raw.length, MAX_CHECKS);
+  const upTo = Math.min(sentChecks.length, MAX_CHECKS);
   for (let i = 0; i < upTo; i++) {
-    const check = runCheck(raw[i], withItems);
+    const check = runCheck(sentChecks[i], withItems);
     if (check !== null) {
       checks.push(check);
     }
@@ -542,12 +487,12 @@ function runCheck(entry, withItems) {
 /**
  * One finding as stored, field by field, or null when it is not one.
  *
- * @param {unknown} raw
+ * @param {unknown} sentFinding
  * @param {boolean} withItems
  * @returns {NonNullable<StoredCheck['finding']> | null}
  */
-function runFinding(raw, withItems) {
-  const fields = fieldsOf(raw);
+function runFinding(sentFinding, withItems) {
+  const fields = fieldsOf(sentFinding);
   if (fields === null) {
     return null;
   }
@@ -580,16 +525,16 @@ function runFinding(raw, withItems) {
 /**
  * The labelled numbers under a headline, as stored.
  *
- * @param {unknown} raw
+ * @param {unknown} sentEvidence
  * @returns {NonNullable<StoredFinding['evidence']>}
  */
-function runEvidence(raw) {
-  if (!Array.isArray(raw)) {
+function runEvidence(sentEvidence) {
+  if (!Array.isArray(sentEvidence)) {
     return [];
   }
   const rows = [];
-  for (let i = 0; i < raw.length; i++) {
-    const entry = raw[i];
+  for (let i = 0; i < sentEvidence.length; i++) {
+    const entry = sentEvidence[i];
     if (!entry || entry.label === undefined) {
       continue;
     }
@@ -602,14 +547,14 @@ function runEvidence(raw) {
 /**
  * The objects a finding names, as stored.
  *
- * @param {readonly unknown[]} raw
+ * @param {readonly unknown[]} sentItems
  * @returns {FindingItem[]}
  */
-function runItems(raw) {
+function runItems(sentItems) {
   /** @type {FindingItem[]} */
   const rows = [];
-  for (let i = 0; i < raw.length; i++) {
-    const item = runItem(raw[i]);
+  for (let i = 0; i < sentItems.length; i++) {
+    const item = runItem(sentItems[i]);
     if (item !== null) {
       rows.push(item);
     }
@@ -633,13 +578,11 @@ function runItem(entry) {
   const item = {id: String(fields.id), label: String(fields.label)};
   copyText(item, 'target', fields.target);
   copyText(item, 'detail', fields.detail);
-  /* The search behind the row's own number, where that number counts issues. Made
-     of project keys and a field name - the identifiers of configuration, the same
-     as everything else kept here - and never anything a person wrote. */
+  // A search made of project keys and a field name, never of anything a person wrote.
   copyText(item, 'query', fields.query);
-  /* Kept because the score depends on them: without these two numbers a marked
-     board comes back from storage weighing the same as any other, and the score
-     of the restored run would not be the score that was shown. */
+  /* The score depends on these two: without them a marked board comes back
+     weighing the same as any other, and the restored score would not be the one
+     that was shown. */
   copyNumber(item, 'affected', fields.affected);
   copyNumber(item, 'measured', fields.measured);
   return item;
@@ -648,10 +591,9 @@ function runItem(entry) {
 /**
  * Writes the findings of one scan, with their objects if they fit.
  *
- * Over budget the objects are left out rather than shortened: half a list that
- * presents itself as a whole one is worse than a count and a sentence saying the
- * names were not kept. If even that does not fit, the previous run stays - it is
- * older, it says so, and it is readable.
+ * Over budget the objects are dropped whole rather than shortened - half a list
+ * that presents itself as a whole one is worse than a count saying the names were
+ * not kept - and if that still does not fit, the older run stays.
  *
  * @param {HandlerCtx} ctx
  * @param {Record<string, unknown>} body
@@ -708,10 +650,9 @@ function withScan(history, aggregate) {
 /**
  * The host this instance was addressed under.
  *
- * A widget knows a scheme and a host from its own base, but not whether that is the
- * instance - in the development entry it is a local dev server. The handler sees the
- * request and with it the real host. Where the two agree, the report may build links;
- * otherwise it leaves them out. Nothing is guessed.
+ * A widget knows a host from its own base but not whether that is the instance -
+ * in the development entry it is a dev server. The handler sees the request, so
+ * the report can compare the two and leave its links out where they disagree.
  *
  * @param {HandlerCtx} ctx
  * @returns {string | null}
@@ -731,10 +672,9 @@ function requestedHost(ctx) {
 /**
  * A number, or null where there is none to have.
  *
- * A score is null when not a single check ran, and a widget of an older version
- * leaves the second score out altogether - so absent is a value here. Anything
- * that is not a number becomes absent too, rather than NaN: JSON writes that as
- * null, and it would come back as a point on the trend at no height.
+ * A score is null when not a single check ran, so absent is a value here. Anything
+ * that is not a number becomes absent too rather than NaN, which JSON writes as
+ * null and the trend would read back as a point at no height.
  *
  * @param {unknown} value
  * @returns {number | null}
@@ -746,9 +686,6 @@ function numberOrNull(value) {
 
 /**
  * Marks one object of one check, or takes the mark off again.
- *
- * The stored identifier is a project key, a board id, a field or a group name -
- * configuration of the instance, not its content and not a person.
  *
  * @param {HandlerCtx} ctx
  * @param {string} checkId - Already through `identifier`, at the endpoint.
@@ -818,8 +755,6 @@ exports.httpHandler = {
           ctx.response.json({error: 'at must be an ISO 8601 instant in UTC.'});
           return;
         }
-        // Store the aggregates explicitly rather than the whole payload, so a
-        // future field in the report cannot leak issue content into storage.
         const aggregate = {
           score: numberOrNull(body.score),
           // What the instance measured, before anything was marked as intentional.
