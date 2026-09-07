@@ -1624,8 +1624,8 @@ interface ScanStatusProps {
   /** The trend section, shown in every state - with or without a report. */
   trend: React.ReactNode;
   scannedBefore: boolean;
-  /** True when the app's own storage did not answer. */
-  unreadable: boolean;
+  /** How far the read of the app's own storage has come. */
+  stateRead: StateRead;
   origin: string | null;
   markedItems: IgnoredItems;
   onToggleIgnore: (checkId: string, ignored: boolean) => void;
@@ -1636,9 +1636,13 @@ interface ScanStatusProps {
 /**
  * What stands on the page before the first click.
  *
- * Three different situations, and the difference matters enough to name: storage
- * that did not answer is not an instance that has never been scanned, and an
- * instance with earlier numbers but no kept findings is neither.
+ * Four different situations, and the difference matters enough to name: storage
+ * that did not answer is not an instance that has never been scanned, storage that
+ * has not answered *yet* is neither, and an instance with earlier numbers but no
+ * kept findings is a fourth. Getting the third one wrong is what this page did: it
+ * said "the report is kept afterwards, so opening this page again does not scan
+ * again" while the kept report was still on its way, under a button offering to
+ * scan - and a scan started then is not recorded, so the wait bought nothing.
  */
 const IDLE_TEXT = {
   unreadable:
@@ -1649,6 +1653,9 @@ const IDLE_TEXT = {
   scannedBefore:
     'The numbers above come from earlier scans; their findings are not here. A ' +
     'scan brings them back from the instance as it stands now.',
+  /* Said while the storage is still answering. Short: it is a wait, not a state
+     the reader has to decide anything about. */
+  reading: 'Looking for a scan this instance already has...',
   first:
     'A scan reads counts, IDs and timestamps, never issue content, and names the ' +
     'projects, boards and accounts behind each finding so they can be acted on. ' +
@@ -1682,9 +1689,18 @@ const ScanElsewhere: React.FunctionComponent<{
 
 const ScanIdle: React.FunctionComponent<{
   scannedBefore: boolean;
-  unreadable: boolean;
-}> = ({scannedBefore, unreadable}) => {
-  if (unreadable) {
+  stateRead: StateRead;
+}> = ({scannedBefore, stateRead}) => {
+  /* A wait is drawn as a wait. The dashboard tile has done this since it was
+     built; the page had only the three outcomes of the read and none of them. */
+  if (stateRead === 'pending') {
+    return (
+      <div className="report__loader">
+        <Loader message={IDLE_TEXT.reading}/>
+      </div>
+    );
+  }
+  if (stateRead === 'failed') {
     return (
       <Alert type={Alert.Type.WARNING} inline closeable={false} showWithAnimation={false}>
         {`${IDLE_TEXT.unreadable} ${IDLE_TEXT.cost}`}
@@ -1700,7 +1716,7 @@ const ScanStatus: React.FunctionComponent<ScanStatusProps> = ({
   result,
   trend,
   scannedBefore,
-  unreadable,
+  stateRead,
   origin,
   markedItems,
   onToggleIgnore,
@@ -1712,7 +1728,7 @@ const ScanStatus: React.FunctionComponent<ScanStatusProps> = ({
       return (
         <>
           {trend}
-          <ScanIdle scannedBefore={scannedBefore} unreadable={unreadable}/>
+          <ScanIdle scannedBefore={scannedBefore} stateRead={stateRead}/>
         </>
       );
     case 'running':
@@ -1999,10 +2015,13 @@ const AppComponent: React.FunctionComponent = () => {
           </h1>
         </div>
         <div className="report__actions">
+          {/* Busy while the storage is still answering, too: a scan started then
+              runs without the standing decisions and is therefore not recorded, so
+              offering it would cost a few hundred requests for nothing. */}
           <Button
             primary
-            loader={state.phase === 'running'}
-            disabled={state.phase === 'running'}
+            loader={state.phase === 'running' || stateRead === 'pending'}
+            disabled={state.phase === 'running' || stateRead === 'pending'}
             onClick={startScan}
           >
             {state.phase === 'done' ? 'Scan again' : 'Start scan'}
@@ -2054,7 +2073,7 @@ const AppComponent: React.FunctionComponent = () => {
           />
         )}
         scannedBefore={history.length > 0}
-        unreadable={stateRead === 'failed'}
+        stateRead={stateRead}
         origin={origin}
         markedItems={markedItems}
         onToggleIgnore={toggleIgnore}
