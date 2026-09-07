@@ -70,14 +70,14 @@ test('names that come from the instance cannot become markup', async () => {
       sprints: ['First sprint'],
         projects: ['P'],
         columns: [
-          { presentation: 'Open', fieldValues: ['Open'] },
-          { presentation: 'Doing', fieldValues: ['Doing'] },
-          { presentation: 'Done', fieldValues: ['Done'] },
+          { resolved: false, presentation: 'Open', fieldValues: ['Open'] },
+          { resolved: false, presentation: 'Doing', fieldValues: ['Doing'] },
+          { resolved: false, presentation: 'Done', fieldValues: ['Done'] },
         ],
       },
     ],
     groups: [],
-    countRules: [{ match: /\{Doing\}/, count: 12 }],
+    countRules: [{ match: /Board <script>/, count: 12 }],
   });
   const wip = CHECKS.find((c) => c.id === 'process.boards-without-wip-limits');
   assert.ok(wip);

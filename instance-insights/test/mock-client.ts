@@ -217,12 +217,12 @@ export function syntheticData(now: Date): MockData {
       board('3-0', 'Team WEB', ['WEB'], [
         column('Open'),
         column('In Progress'),
-        column('Done'),
+        column('Done', { resolved: true }),
       ]),
       board('3-1', 'Kanban APP', ['APP'], [
         column('Backlog'),
         column('In Progress', { wipLimitMax: 3 }),
-        column('Done'),
+        column('Done', { resolved: true }),
       ]),
       /* Plans in sprints, so a column limit is not its instrument: out of
          boards-without-wip-limits, still in the column-count and archive checks.
@@ -236,7 +236,7 @@ export function syntheticData(now: Date): MockData {
         column('QA'),
         column('Staging'),
         column('Release Notes'),
-        column('Released'),
+        column('Released', { resolved: true }),
       ], true),
     ],
 
@@ -392,18 +392,38 @@ function board(
 ): AgileBoard {
   // Every board in a real instance builds its columns from a field; State is the
   // default one YouTrack sets up.
-  return { id, name, columnField: 'State', projects, sprints: ['First sprint'], columns, usesSprints };
+  return {
+    id,
+    name,
+    columnField: 'State',
+    projects,
+    sprints: ['First sprint'],
+    columns,
+    usesSprints,
+  };
 }
 
-/** A column presents one field value, which is the common case on a real board. */
+/**
+ * A column presents one field value, which is the common case on a real board.
+ *
+ * `ordinal` is where it sits left to right and defaults to its place in the list.
+ * It is stated explicitly where a fixture lists the columns in another order than
+ * the board shows them - which is what a real instance answers, and what a check
+ * that reads position out of the list order gets wrong.
+ */
 function column(
   presentation: string,
-  limits?: { wipLimitMin?: number; wipLimitMax?: number },
+  options?: {
+    wipLimitMin?: number;
+    wipLimitMax?: number;
+    resolved?: boolean;
+  },
 ): AgileBoard['columns'][number] {
   return {
     presentation,
-    wipLimitMin: limits?.wipLimitMin ?? null,
-    wipLimitMax: limits?.wipLimitMax ?? null,
+    resolved: options?.resolved ?? false,
+    wipLimitMin: options?.wipLimitMin ?? null,
+    wipLimitMax: options?.wipLimitMax ?? null,
     fieldValues: [presentation],
   };
 }

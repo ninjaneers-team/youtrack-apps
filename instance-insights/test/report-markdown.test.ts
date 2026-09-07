@@ -138,7 +138,7 @@ test('objects that are not people are still listed by name', async () => {
 
   /* Board and project names carry no personal data and remain actionable - and the
      heading names the kind of thing, since "object" is a word from the code. */
-  assert.match(md, /Affected boards \(\d+\):/);
+  assert.match(md, /Affected boards? \(\d+\):/);
   assert.match(md, /Affected projects \(\d+\):/);
   assert.match(md, /- Team WEB/);
   assert.match(md, /- LEGACY/);

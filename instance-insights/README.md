@@ -105,7 +105,6 @@ category.
 | `process.unassigned-unresolved` | Process hygiene (2) | 6 |
 | `process.stale-unresolved` | Process hygiene (2) | 8 |
 | `process.boards-without-wip-limits` | Process hygiene (2) | 5 |
-| `process.aging-wip` | Process hygiene (2) | 7 |
 | `process.overgrown-boards` | Process hygiene (2) | 4 |
 | `process.boards-on-archived-projects` | Process hygiene (2) | 3 |
 | `governance.projects-without-leader` | Governance (2) | 8 |
@@ -114,9 +113,9 @@ category.
 | `portfolio.tiny-projects` | Project portfolio (1) | 5 |
 
 Thresholds live in `DEFAULT_CONFIG` (`src/types.ts`): 90 days without activity for a
-licence, 180 days without an update for a stale issue, 30 days for work in progress
-that stopped moving, 95 % empty for a field, 20 % unassigned, more than seven columns
-for a board, fewer than ten issues for a project. Every finding says when it may be
+licence, 180 days without an update for a stale issue, 95 % empty for a field,
+20 % unassigned, more than seven columns for a board, fewer than ten issues for a
+project. Every finding says when it may be
 firing on something intentional, and none of them states a duration for the work - an
 estimate for an instance the app has never seen would be a guess.
 
@@ -136,20 +135,18 @@ Four definitions are worth knowing, because they are not the obvious ones:
 - **A card counts as being on a board, not as being in its projects.** The two are
   not the same: a board shows the cards placed on it, and an issue can sit in one of
   its projects without ever appearing there. So a board is asked about itself -
-  YouTrack exposes each board as a field carrying the sprint a card sits in. And
-  what the finding counts is boards, not cards: the same issue can sit on several
-  boards, so cards cannot be added up across them. Each board it names carries the
-  cards of its own board, where they are true.
+  YouTrack exposes each board as a field carrying the sprint a card sits in, so a
+  board can be asked what it holds.
 - **WIP limits are only asked of boards that plan without sprints.** A sprint board
   limits work through the sprint it commits to, so a missing column limit there is
-  not a finding. And a board with nothing in flight has nothing to limit, so it is
-  left out too - the finding names the boards that carry cards with no limit
-  anywhere, and how many cards each of them holds.
-- **The board decides what "in progress" means.** The columns between the first and
-  the last are work in flight - the first is where work waits, the last is where it
-  ends - and the column field and its values come from the board itself. Every board
-  is measured, and since boards can cover the same project, the finding counts cards
-  rather than issues.
+  not a finding. A board of two columns has nowhere to put one, and an empty board
+  has nothing to limit, so both are left out - the finding names the boards in use
+  with no limit anywhere, and how many cards each of them holds.
+- **Nothing here claims to know which column is work and which is a queue.** An
+  instance does not say: a state bundle marks only what counts as resolved, and a
+  real vocabulary holds On Hold beside In Review with nothing to tell them apart. So
+  no finding is built on that difference. What is measured instead is what an
+  instance does state - whether an issue is resolved, and when it last moved.
 
 ## What it reads, and what it keeps
 
@@ -195,16 +192,16 @@ the instance.
 ## Load on your instance
 
 A scan's cost follows the size of the instance, not its traffic: one search per
-licensed account, two per project, one per custom field, three per board, twenty for
-the lists themselves, and four for the two checks that ask about the whole instance
-at once. Those add up to the totals below, which is the point of stating them.
+licensed account, two per project, one per custom field, one per board, and
+twenty-two for the lists it reads and the counts it asks once for the whole
+instance. Those add up to the totals below, which is the point of stating them.
 
 | Instance | Requests |
 |---|---|
-| 25 accounts - 10 projects - 5 boards - 20 fields | 104 |
-| 100 accounts - 50 projects - 20 boards - 40 fields | 324 |
-| 500 accounts - 200 projects - 60 boards - 80 fields | 1 184 |
-| 2 000 accounts - 800 projects - 200 boards - 150 fields | 4 374 |
+| 25 accounts - 10 projects - 5 boards - 20 fields | 92 |
+| 100 accounts - 50 projects - 20 boards - 40 fields | 282 |
+| 500 accounts - 200 projects - 60 boards - 80 fields | 1 062 |
+| 2 000 accounts - 800 projects - 200 boards - 150 fields | 3 972 |
 
 Requests start at least 50 ms apart - at most twenty a second, whatever else is going
 on. That ceiling is the promise to the instance, and it does not move.

@@ -143,6 +143,8 @@ export class CountingClient implements YouTrackClient {
       sprints: ['First sprint'],
       columns: Array.from({ length: this.shape.columnsPerBoard }, (__, c) => ({
         presentation: `Column ${c}`,
+        // The last one is where work ends, as a board says it.
+        resolved: c === this.shape.columnsPerBoard - 1,
         fieldValues: [`Value ${c}`],
       })),
     }));

@@ -21,10 +21,10 @@ const NOW = new Date('2026-09-01T00:00:00.000Z');
 /** The rule the README states in words, as arithmetic. */
 const PER_ACCOUNT = 1;
 const PER_PROJECT = 2;
-const PER_BOARD = 3;
+const PER_BOARD = 1;
 const PER_FIELD = 1;
-/** The lists themselves, plus the two checks that ask about the whole instance. */
-const FLAT = 20 + 4;
+/** The lists this app reads, plus the counts it asks once for the whole instance. */
+const FLAT = 22;
 
 function requestsFor(shape: Shape): number {
   return (

@@ -159,46 +159,18 @@ async function main(): Promise<void> {
     .slice(1, -1)
     .flatMap((c) => c.fieldValues);
   results.push(
-    sampleBoard && sampleValues.length > 0
-      ? await probe(
-          `query {${sampleBoard.columnField}} over ${sampleValues.length} column ` +
-            'values (aging WIP)',
-          async () =>
-            `=> ${await client.count(
-              QUERIES.boardWip(
-                sampleBoard.name,
-                sampleBoard.usesSprints,
-                sampleBoard.sprints,
-                sampleBoard.projects,
-                sampleBoard.columnField,
-                sampleValues,
-              ),
-            )}`,
-        )
-      : { name: 'query board columns (aging WIP)', ok: false, detail: 'no sample column' },
-  );
-  results.push(
-    sampleBoard && sampleValues.length > 0
-      ? await probe('query board columns + updated-range (aging WIP)', async () =>
+    sampleBoard
+      ? await probe('query the cards a board holds', async () =>
           `=> ${await client.count(
-            QUERIES.notMovedSince(
-              QUERIES.boardWip(
-                sampleBoard.name,
-                sampleBoard.usesSprints,
-                sampleBoard.sprints,
-                sampleBoard.projects,
-                sampleBoard.columnField,
-                sampleValues,
-              ),
-              ISO_OLD,
+            QUERIES.cardsOnBoard(
+              sampleBoard.name,
+              sampleBoard.usesSprints,
+              sampleBoard.sprints,
+              sampleBoard.projects,
             ),
           )}`,
         )
-      : {
-          name: 'query board columns stale (aging WIP)',
-          ok: false,
-          detail: 'no sample column',
-        },
+      : { name: 'query the cards a board holds', ok: false, detail: 'no board' },
   );
 
   // State bundles carry the resolved flag per value; the check needs nothing else.

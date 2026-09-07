@@ -53,7 +53,8 @@ const FIELDS = {
   // definition of work-in-progress queryable (`{State}: {In Progress}`).
   agile:
     'id,name,projects(shortName),sprintsSettings(disableSprints),sprints(name),' +
-    'columnSettings(field(name),columns(presentation,wipLimit(min,max),fieldValues(name)))',
+    'columnSettings(field(name),columns(presentation,isResolved,' +
+    'wipLimit(min,max),fieldValues(name)))',
   group: 'id,name,usersCount',
   stateBundle: 'id,name,values(name,isResolved)',
 } as const;
@@ -242,6 +243,7 @@ interface RawUser {
 }
 interface RawColumn {
   presentation?: string;
+  isResolved?: boolean;
   wipLimit?: { min?: number | null; max?: number | null } | null;
   fieldValues?: { name?: string }[] | null;
 }
@@ -969,6 +971,7 @@ export class YouTrackApiClient implements YouTrackClient {
         .filter((name): name is string => Boolean(name)),
       columns: (b.columnSettings?.columns ?? []).map(c => ({
         presentation: c.presentation ?? '',
+        resolved: c.isResolved ?? false,
         wipLimitMin: c.wipLimit?.min ?? null,
         wipLimitMax: c.wipLimit?.max ?? null,
         fieldValues: (c.fieldValues ?? [])

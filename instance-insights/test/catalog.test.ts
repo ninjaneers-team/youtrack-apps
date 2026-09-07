@@ -109,121 +109,6 @@ test('accounts younger than the window are not counted as inactive licences', as
   assert.deepEqual(logins, ['j.doe', 'm.novak', 'svc-jenkins']);
 });
 
-test('aging WIP counts the boards it lists', async () => {
-  const result = await runScan(CHECKS, contextOn(syntheticInstance(NOW)));
-  const aging = result.findings.find((f) => f.checkId === 'process.aging-wip');
-
-  /* Three boards carry work and two of them carry work that stopped. Cards cannot
-     be the population: the same issue sits on several boards, so adding them up
-     counted it once per board - and asking the instance for the distinct number
-     took one query naming every board at once, the only question in this check that
-     could not fail without taking the whole check down with it. It did, on an
-     instance with thirty-three boards. A board does not overlap with itself. */
-  assert.equal(aging?.ratio, 2 / 3);
-  assert.match(aging?.headline ?? '', /2 of 3 boards carry cards that have not moved/);
-  /* Every board answered, so the report says nothing about boards it could not
-     count - a line about none of them reads as a limit that is not there. */
-  assert.deepEqual(aging?.evidence, []);
-  /* The rows keep the cards of their own board, where they are true and where the
-     work is done. */
-  assert.deepEqual(
-    (aging?.items ?? []).map((i) => `${i.label}: ${i.detail}`),
-    ['Team WEB: 8 of 20 cards', 'Kanban APP: 8 of 20 cards'],
-  );
-  // A share measured on one arbitrary board would be read as the instance.
-  assert.ok(!/Team WEB/.test(aging?.headline ?? ''), 'the headline names no board');
-});
-
-test('marking a board takes it out of both sides of the share', async () => {
-  const outcomes = await runChecks(CHECKS, contextOn(syntheticInstance(NOW)));
-  const aging = outcomes.find((o) => o.checkId === 'process.aging-wip')?.finding;
-  assert.ok(aging);
-
-  /* What the population being boards buys: one board weighs as much as any other,
-     so a board marked as intentional leaves the numerator and the denominator
-     together. With cards it had no answer that did not depend on which board was
-     marked first, and the control had to be withheld. */
-  const marked = new Map([['process.aging-wip', new Set([aging.items?.[0]?.id ?? ''])]]);
-  const scored = score(outcomes, new Set(), marked);
-  const after = scored.findings.find((f) => f.checkId === 'process.aging-wip');
-  assert.equal(effectiveRatio(after ?? aging, marked.get('process.aging-wip')), 1 / 2);
-});
-
-test('aging WIP asks whether a card is on the board, not just in its projects', async () => {
-  const {client: counting, queries} = recordingClient(syntheticInstance(NOW));
-  const agingWip = CHECKS.find((c) => c.id === 'process.aging-wip');
-  assert.ok(agingWip);
-
-  await runScan([agingWip], contextOn(counting));
-
-  /* The projects of a board are not the board. Counting by project alone reported
-     cards on boards whose columns were empty, and missed cards that were on the
-     board - measured against a live instance, it was wrong on every board it
-     touched, in both directions. Board membership is a field: `Board <name>`
-     carries the sprint a card sits in. */
-  for (const query of queries) {
-    assert.match(query, /has: \{Board /, 'every count asks about board membership');
-    assert.match(query, /project: /, 'and keeps the project scope beside it');
-  }
-  /* On a board that plans in sprints, a card nobody scheduled sits in a sprint of
-     its own that `has:` does not count, so those sprints are named beside it. On a
-     board that plans without them, naming the sprint it still reports produced a
-     count the instance never delivered, so it is asked with `has:` alone. */
-  const namesSprint = (board: string): boolean =>
-    queries.some((q) => q.includes(`{Board ${board}}: {First sprint}`));
-  assert.equal(namesSprint('Release LEGACY'), true, 'a sprint board names its sprints');
-  assert.equal(namesSprint('Team WEB'), false, 'a flow board is asked with has: alone');
-  assert.equal(namesSprint('Kanban APP'), false, 'a flow board is asked with has: alone');
-});
-
-test('a board asks one question per board, not one per column', async () => {
-  const {client: counting, queries: queries} = recordingClient(
-    syntheticInstance(NOW),
-  );
-  const agingWip = CHECKS.find((c) => c.id === 'process.aging-wip');
-  assert.ok(agingWip);
-
-  await runScan([agingWip], contextOn(counting));
-
-  /* Three boards, two questions each: what it carries, and how much of that
-     stopped. Release LEGACY alone has seven middle columns, which one query per
-     column would make fourteen requests on its own. */
-  assert.equal(queries.length, 6);
-  for (const query of queries) {
-    assert.match(query, / and \(/, 'a group in parentheses needs an explicit and');
-  }
-});
-
-test('aging WIP is skipped when no board has a column in between', async () => {
-  const client = new MockYouTrackClient({
-    projects: [],
-    customFields: [],
-    users: [],
-    boards: [
-      {
-        id: 'b',
-        name: 'Two columns only',
-        usesSprints: false,
-        columnField: 'State',
-      sprints: ['First sprint'],
-        projects: ['P'],
-        columns: [
-          { presentation: 'Open', fieldValues: ['Open'] },
-          { presentation: 'Done', fieldValues: ['Done'] },
-        ],
-      },
-    ],
-    groups: [],
-    countRules: [],
-  });
-  const agingWip = CHECKS.find((c) => c.id === 'process.aging-wip');
-  assert.ok(agingWip);
-
-  const result = await runScan([agingWip], contextOn(client));
-  assert.equal(result.outcomes[0]?.status, 'skipped');
-  assert.equal(result.overallScore, null, 'a skipped check leaves the score alone');
-});
-
 test('the overgrown board is the one past the column limit', async () => {
   const result = await runScan(CHECKS, contextOn(syntheticInstance(NOW)));
   const overgrown = result.findings.find(
@@ -272,31 +157,35 @@ test('a board that spans an archived project says so where it is named', async (
         projects: ['ACT', 'OLD'],
         usesSprints: false,
         columns: [
-          { presentation: 'Open', wipLimitMin: null, wipLimitMax: null, fieldValues: ['Open'] },
-          { presentation: 'Doing', wipLimitMin: null, wipLimitMax: null, fieldValues: ['Doing'] },
-          { presentation: 'Done', wipLimitMin: null, wipLimitMax: null, fieldValues: ['Done'] },
+          { resolved: false, presentation: 'Open', wipLimitMin: null, wipLimitMax: null, fieldValues: ['Open'] },
+          { resolved: false, presentation: 'Doing', wipLimitMin: null, wipLimitMax: null, fieldValues: ['Doing'] },
+          { resolved: false, presentation: 'Done', wipLimitMin: null, wipLimitMax: null, fieldValues: ['Done'] },
         ],
       },
     ],
     groups: [],
-    // The stale query carries `updated:`; the plain one does not. First match wins.
-    countRules: [
-      { match: /updated:/, count: 3 },
-      { match: /Doing/, count: 8 },
-    ],
+    countRules: [{ match: /Board Mixed board/, count: 8 }],
   });
-  const wip = CHECKS.find((c) => c.id === 'process.aging-wip');
+  const wip = CHECKS.find((c) => c.id === 'process.boards-without-wip-limits');
   assert.ok(wip);
 
-  const result = await runScan([wip], contextOn(client));
+  const {client: counting, queries} = recordingClient(client);
+  const result = await runScan([wip], contextOn(counting));
   const finding = result.findings[0];
   assert.equal(finding?.items?.length, 1);
   assert.equal(finding?.items?.[0]?.label, 'Mixed board');
-  assert.equal(finding?.items?.[0]?.detail, '3 of 8 cards, 1 archived project left out');
+  /* One number and what stayed out of it. The two numbers this used to carry were
+     the share of a board's cards that had stopped moving - a measurement this app
+     turned out not to be able to make. */
+  assert.equal(finding?.items?.[0]?.detail, '8 cards, 1 archived project left out');
 
-  // The query names the active project only, or search would answer with a 400.
-  const asked = result.outcomes[0];
-  assert.equal(asked?.status, 'finding');
+  // The query names the active project only: search answers a 400 for an archived
+  // one, which would take the board - and this check - down with it.
+  assert.ok(queries.length > 0, 'the board was asked about');
+  for (const query of queries) {
+    assert.ok(query.includes('{ACT}'), `the active project is named: ${query}`);
+    assert.ok(!query.includes('OLD'), `an archived project reached a query: ${query}`);
+  }
 });
 
 test('a board whose only project is archived is not judged by its columns', async () => {
@@ -326,6 +215,7 @@ test('a board whose only project is archived is not judged by its columns', asyn
         usesSprints: false,
         columns: Array.from({ length: 9 }, (_, i) => ({
           presentation: `Step ${i}`,
+          resolved: i === 8,
           wipLimitMin: null,
           wipLimitMax: null,
           fieldValues: [`Step ${i}`],
@@ -640,26 +530,6 @@ test('every name that comes from the instance is braced in a query', async () =>
 });
 
 
-test('a board reaching into an archived project is asked only about the rest', async () => {
-  const {client: counting, queries: queries} = recordingClient(
-    syntheticInstance(NOW),
-  );
-  const agingWip = CHECKS.find((c) => c.id === 'process.aging-wip');
-  assert.ok(agingWip);
-
-  await runScan([agingWip], contextOn(counting));
-
-  // Release LEGACY covers LEGACY and the archived ARCHIVE. Naming the archived one
-  // would make the query a 400, so the board is asked about LEGACY alone.
-  assert.ok(
-    queries.some((q) => q.includes('{LEGACY}')),
-    'the board is still measured',
-  );
-  for (const query of queries) {
-    assert.ok(!query.includes('ARCHIVE'), `an archived project reached a query: ${query}`);
-  }
-});
-
 test('a sprint board is not judged by column limits', async () => {
   const result = await runScan(CHECKS, contextOn(syntheticInstance(NOW)));
   const wip = result.findings.find(
@@ -667,13 +537,13 @@ test('a sprint board is not judged by column limits', async () => {
   );
 
   /* Release LEGACY plans in sprints, so it limits work through the sprint it
-     commits to; Kanban APP has a limit on a column. Team WEB carries cards in
-     flight with no limit anywhere, and is the only board this check is about. */
+     commits to; Kanban APP has a limit on a column. Team WEB holds cards with no
+     limit anywhere, and is the only board this check is about. */
   assert.deepEqual((wip?.items ?? []).map((i) => i.label), ['Team WEB']);
   assert.equal(wip?.ratio, 1 / 2);
-  assert.match(wip?.headline ?? '', /work in flight with no limit/);
+  assert.match(wip?.headline ?? '', /of 2 boards in use has no limit on any column/);
   assert.equal(
-    wip?.evidence.find((e) => e.label === 'Cards in flight without a limit')?.value,
+    wip?.evidence.find((e) => e.label === 'Cards on those boards')?.value,
     20,
   );
 });
@@ -701,14 +571,14 @@ test('a board with nothing in flight needs no limit on it', async () => {
       sprints: ['First sprint'],
         projects: ['WEB'],
         columns: [
-          { presentation: 'Open', fieldValues: ['Open'], wipLimitMin: null, wipLimitMax: null },
-          { presentation: 'Doing', fieldValues: ['Doing'], wipLimitMin: null, wipLimitMax: null },
-          { presentation: 'Done', fieldValues: ['Done'], wipLimitMin: null, wipLimitMax: null },
+          { resolved: false, presentation: 'Open', fieldValues: ['Open'], wipLimitMin: null, wipLimitMax: null },
+          { resolved: false, presentation: 'Doing', fieldValues: ['Doing'], wipLimitMin: null, wipLimitMax: null },
+          { resolved: false, presentation: 'Done', fieldValues: ['Done'], wipLimitMin: null, wipLimitMax: null },
         ],
       },
     ],
     groups: [],
-    countRules: [{ match: /\{Doing\}/, count: 0 }],
+    countRules: [{ match: /Board Empty flow/, count: 0 }],
   });
   const wip = CHECKS.find((c) => c.id === 'process.boards-without-wip-limits');
   assert.ok(wip);
@@ -716,7 +586,7 @@ test('a board with nothing in flight needs no limit on it', async () => {
   const result = await runScan([wip], contextOn(client));
 
   assert.equal(result.outcomes[0]?.status, 'skipped');
-  assert.match(result.outcomes[0]?.reason ?? '', /carries work in flight/);
+  assert.match(result.outcomes[0]?.reason ?? '', /holds a card/);
 });
 
 test('a check that lists what it counts says how many it counted against', async () => {

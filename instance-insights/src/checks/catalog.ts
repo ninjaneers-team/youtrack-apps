@@ -14,7 +14,6 @@
 
 import type {
   AgileBoard,
-  BoardColumn,
   CheckDefinition,
   CustomField,
   Evidence,
@@ -81,31 +80,27 @@ export const QUERIES = {
         ')'
       : `has: {Board ${board}}`,
   /**
-   * Cards a board holds in the columns between its first and its last.
+   * Cards a board holds, in the projects a query may name.
    *
-   * Four details the parser and the instance insist on. Field and value names are
-   * braced because either can contain spaces (`{Board Status}: {In Progress}`). A
-   * group in parentheses needs an explicit `and` in front of it. Values are joined
-   * with `or`, not with commas: a comma list after a project clause is rejected.
-   * And the project scope stays even though the board clause already narrows the
+   * The project scope stays even though the board clause already narrows the
    * search - without it, the same board query answered in 140 ms on one run and
    * was still being computed twenty seconds later on the next. It also keeps
    * archived projects out, which search will not take as a scope anyway.
+   *
+   * What this does not ask is which of those cards are work in flight. Nothing in
+   * an instance says which of a board's columns is a queue and which is work: a
+   * state bundle marks only what counts as resolved, and a real vocabulary holds
+   * On Hold beside In Review with nothing to tell them apart. A check that needs
+   * that distinction cannot have it.
    */
-  boardWip: (
+  cardsOnBoard: (
     board: string,
     usesSprints: boolean,
     sprints: readonly string[],
     projects: readonly string[],
-    field: string,
-    values: readonly string[],
   ): string =>
     `${QUERIES.onBoard(board, usesSprints, sprints)} and ` +
-    `project: ${projects.map((shortName) => `{${shortName}}`).join(', ')} and (` +
-    `${values.map((value) => `{${field}}: {${value}}`).join(' or ')})`,
-  /** Cards that have not moved since the cutoff, on one board or across many. */
-  notMovedSince: (cards: string, cutoff: string): string =>
-    `${cards} and updated: * .. ${cutoff}`,
+    `project: ${projects.map((shortName) => `{${shortName}}`).join(', ')}`,
 };
 
 /** Absolute YYYY-MM-DD `days` before ctx.now. Derived from now, no clock read. */
@@ -594,15 +589,21 @@ const staleUnresolved: CheckDefinition = checkOf({
 });
 
 /**
- * Columns that hold work in progress: everything between the first and the last.
+ * Whether a limit has anywhere to sit on this board.
  *
- * A board's own field values decide what "in progress" means here, without the
- * check guessing at state names. The first column is where work waits and the last
- * is where it ends, so neither is work in flight. Boards with three columns or
- * fewer than three leave nothing in between, which is why the checks skip them.
+ * A limit belongs on a column work passes through, so the board needs one after the
+ * column work arrives in - which is what more than one unfinished column means. The
+ * instance's own resolved flag says which columns are the end, rather than "the
+ * last one": a board may end in more than one of them, Released beside Cancelled,
+ * and the instance does not list its columns in board order anyway.
+ *
+ * Which of the unfinished columns is the queue and which is the work is not asked,
+ * because nothing in an instance says: a state bundle marks only what counts as
+ * resolved, and a real vocabulary holds On Hold beside In Review with nothing to
+ * tell them apart. Only the count matters here, and the count does not need it.
  */
-function wipColumns(board: AgileBoard): BoardColumn[] {
-  return board.columns.slice(1, -1).filter((c) => c.fieldValues.length > 0);
+function hasColumnForLimit(board: AgileBoard): boolean {
+  return board.columns.filter((c) => !c.resolved).length > 1;
 }
 
 const boardsWithoutWipLimits: CheckDefinition = checkOf({
@@ -611,9 +612,9 @@ const boardsWithoutWipLimits: CheckDefinition = checkOf({
   title: 'Boards with no limit on work in progress',
   weight: 5,
   why:
-    'A column without a limit takes any amount of work, so a board that carries ' +
-    'cards in flight without one cannot say when it is full. Usually that is not a ' +
-    'decision but a setting nobody made.',
+    'A column without a limit takes any amount of work, so a board in use without ' +
+    'one cannot say when it is full. Usually that is not a decision but a setting ' +
+    'nobody made.',
   legitimateWhen:
     'A team that limits work in another way - by agreement, or by the size of the ' +
     'team - and reads the board as a status view rather than as a pull system.',
@@ -622,9 +623,11 @@ const boardsWithoutWipLimits: CheckDefinition = checkOf({
     'limit imposed from outside gets worked around, so the setting is ' +
     'the smaller half.',
   run: async (ctx): Promise<Measured | null> => {
-    /* Only boards that plan without sprints, and only those with work in flight.
-       A sprint board limits work through its sprint, and an empty board has nothing
-       to limit - judging either by this rule reports a setting they do not need. */
+    /* Only boards that plan without sprints, that have a column where a limit
+       belongs, and that hold cards at all. A sprint board limits work through its
+       sprint, a board of two columns has nothing in between, and an empty board has
+       nothing to limit - judged by this rule, each would be reported for a setting
+       it does not need. */
     const active = new Set(
       countedProjects(await ctx.client.listProjects()).map((p) => p.shortName),
     );
@@ -633,7 +636,7 @@ const boardsWithoutWipLimits: CheckDefinition = checkOf({
         (b) => !b.usesSprints && b.columnField !== '',
       ),
       active,
-    ).filter((r) => r.projects.length > 0 && wipColumns(r.board).length > 0);
+    ).filter((r) => r.projects.length > 0 && hasColumnForLimit(r.board));
     if (flowBoards.length === 0) {
       throw new CheckSkipped(
         'No board plans without sprints, where a column limit is the instrument.',
@@ -642,13 +645,11 @@ const boardsWithoutWipLimits: CheckDefinition = checkOf({
 
     const cardCounts = await ctx.client.countMany(
       flowBoards.map((reach) =>
-        QUERIES.boardWip(
+        QUERIES.cardsOnBoard(
           reach.board.name,
           reach.board.usesSprints,
           reach.board.sprints,
           reach.projects,
-          reach.board.columnField,
-          wipColumns(reach.board).flatMap((c) => c.fieldValues),
         ),
       ),
     );
@@ -676,11 +677,11 @@ const boardsWithoutWipLimits: CheckDefinition = checkOf({
 
     if (carrying.length === 0) {
       /* Two different statements, and the check may only make the one it measured:
-         that no board carries work in flight, or that it could not find out. */
+         that no board in use holds a card, or that it could not find out. */
       throw new CheckSkipped(
         unanswered > 0
           ? `The instance would not count the cards of ${plural(unanswered, 'board')} that plans without sprints.`
-          : 'No board without sprints carries work in flight.',
+          : 'No board without sprints holds a card.',
       );
     }
     if (without.length === 0) return null;
@@ -688,12 +689,12 @@ const boardsWithoutWipLimits: CheckDefinition = checkOf({
     const ratio = share(without.length, carrying.length);
     return {
       itemKind: 'board',
-      headline: `${without.length} of ${plural(carrying.length, 'board')} ${agree(without.length, 'carries', 'carry')} work in flight with no limit on any column.`,
+      headline: `${without.length} of ${plural(carrying.length, 'board')} in use ${agree(without.length, 'has', 'have')} no limit on any column.`,
       ratio,
       total: carrying.length,
       evidence: [
         {
-          label: 'Cards in flight without a limit',
+          label: 'Cards on those boards',
           value: without.reduce((sum, b) => sum + b.cards, 0),
         },
         /* Only when there is one: a line about no such board reads as a limit that
@@ -705,130 +706,7 @@ const boardsWithoutWipLimits: CheckDefinition = checkOf({
       items: toItems(without, ({ reach, cards }) => ({
         id: reach.board.id,
         label: reach.board.name,
-        detail: `${plural(cards, 'card')} in flight${reachNote(reach.left)}`,
-      })),
-    };
-  },
-});
-
-const agingWip: CheckDefinition = checkOf({
-  id: 'process.aging-wip',
-  category: 'process',
-  title: 'Work in progress that stopped moving',
-  weight: 7,
-  why:
-    'An issue that has been in progress for weeks without an update is usually ' +
-    'blocked rather than being worked on. It occupies a slot in the flow, and every ' +
-    'forecast built on the board counts it as active work.',
-  legitimateWhen:
-    'Long-running maintenance tasks, or a column used as a holding area for work ' +
-    'that waits on someone outside the team.',
-  whatItInvolves:
-    'Each card needs a decision by the person holding it: continue, ' +
-    'hand over, or take it out of progress. Where a column is a waiting ' +
-    'room for work that depends on someone else, the fix is the process ' +
-    'around it, not the board.',
-  run: async (ctx): Promise<Measured | null> => {
-    /* A board may reach into archived projects, and search does not accept one as a
-       scope, so they are dropped from its reach before it is asked about. Their
-       cards are not work in flight either way. */
-    const active = new Set(
-      countedProjects(await ctx.client.listProjects()).map((p) => p.shortName),
-    );
-    const boards = reachOf(await ctx.client.listAgileBoards(), active).filter(
-      (r) =>
-        r.board.columnField !== '' &&
-        r.projects.length > 0 &&
-        wipColumns(r.board).length > 0,
-    );
-    if (boards.length === 0) {
-      throw new CheckSkipped('No board has columns between its first and its last.');
-    }
-
-    const cutoff = isoDate(ctx.now, ctx.config.agingWipDays);
-    /** What a board asks about: the cards it holds in its middle columns. */
-    const cardsOn = (reach: BoardReach): string =>
-      QUERIES.boardWip(
-        reach.board.name,
-        reach.board.usesSprints,
-        reach.board.sprints,
-        reach.projects,
-        reach.board.columnField,
-        wipColumns(reach.board).flatMap((c) => c.fieldValues),
-      );
-
-    /* Every board, not the first one that qualifies: a share measured on one
-       arbitrary board out of two hundred describes that board and would be read as
-       the instance. Both batches go out as batches. */
-    const totals = await ctx.client.countMany(boards.map(cardsOn));
-    const carrying: Array<{ reach: BoardReach; total: number }> = [];
-    let unanswered = 0;
-    for (const [index, reach] of boards.entries()) {
-      const result = totals[index];
-      /* A board whose count the instance will not deliver is left out rather than
-         taken as empty, and the finding says how many - a share that quietly
-         dropped a board would read as a share of every board. */
-      if (result === undefined || 'failed' in result) {
-        unanswered++;
-      } else if (result.count > 0) {
-        carrying.push({ reach, total: result.count });
-      }
-    }
-    if (carrying.length === 0) {
-      // As above: not finding work in flight and not being able to ask differ.
-      throw new CheckSkipped(
-        unanswered > 0
-          ? `The instance would not count the cards of ${plural(unanswered, 'board')}.`
-          : 'No board carries work in progress right now.',
-      );
-    }
-
-    const stales = await ctx.client.countMany(
-      carrying.map(({ reach }) => QUERIES.notMovedSince(cardsOn(reach), cutoff)),
-    );
-    const stalled: Array<{ reach: BoardReach; stale: number; total: number }> = [];
-    for (const [index, { reach, total }] of carrying.entries()) {
-      const result = stales[index];
-      if (result === undefined || 'failed' in result) {
-        unanswered++;
-      } else if (result.count > 0) {
-        stalled.push({ reach, stale: result.count, total });
-      }
-    }
-
-    if (stalled.length === 0) return null;
-
-    /* Boards, not cards. The same issue can sit on two boards, so cards cannot be
-       added up across them - and asking the instance for the distinct number meant
-       one query naming every board at once, which is the one question in this check
-       that could not fail without taking the whole thing down. It did, on an
-       instance with thirty-three boards.
-
-       Counting what the finding lists needs no such question: a board does not
-       overlap with itself. Each row still carries the cards of its own board, where
-       they are true and where the work is done. */
-    const ratio = share(stalled.length, carrying.length);
-    return {
-      itemKind: 'board',
-      headline: `${stalled.length} of ${plural(carrying.length, 'board')} ${agree(stalled.length, 'carries', 'carry')} cards that have not moved for more than ${ctx.config.agingWipDays} days.`,
-      ratio,
-      /* One board weighs as much as any other here, because the population is
-         boards - so marking one takes it out of both sides of the share. */
-      affected: stalled.length,
-      total: carrying.length,
-      evidence:
-        /* Only when there is one. A board the instance would not count is a limit
-           of the measurement, and a reader who is not told treats the share as
-           covering every board. */
-        unanswered > 0
-          ? [{ label: 'Boards the instance would not count', value: unanswered }]
-          : [],
-      items: toItems(stalled, ({ reach, stale, total }) => ({
-        id: reach.board.id,
-        label: reach.board.name,
-        detail: `${stale} of ${plural(total, 'card')}${reachNote(reach.left)}`,
-        affected: 1,
-        measured: 1,
+        detail: `${plural(cards, 'card')}${reachNote(reach.left)}`,
       })),
     };
   },
@@ -1172,7 +1050,6 @@ export const CHECKS: readonly CheckDefinition[] = [
   unassignedUnresolved,
   staleUnresolved,
   boardsWithoutWipLimits,
-  agingWip,
   overgrownBoards,
   boardsOnArchivedProjects,
   projectsWithoutLeader,

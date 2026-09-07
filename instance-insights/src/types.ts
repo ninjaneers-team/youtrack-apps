@@ -313,8 +313,6 @@ export interface ScanConfig {
   inactiveUserDays: number;
   /** Days without update before an unresolved issue counts as stale. */
   staleIssueDays: number;
-  /** Days in a progress state before an issue counts as aging WIP. */
-  agingWipDays: number;
   /** Days without any issue activity before a project counts as dormant. */
   dormantProjectDays: number;
   /** Share of issues that must be empty for a field to count as unused. */
@@ -332,7 +330,6 @@ export interface ScanConfig {
 export const DEFAULT_CONFIG: ScanConfig = {
   inactiveUserDays: 90,
   staleIssueDays: 180,
-  agingWipDays: 30,
   dormantProjectDays: 180,
   emptyFieldThreshold: 0.95,
   minIssuesForFieldCheck: 50,
@@ -414,6 +411,14 @@ export interface BoardColumn {
   presentation: string;
   wipLimitMin?: number | null;
   wipLimitMax?: number | null;
+  /**
+   * Whether work in this column counts as done, as the instance says.
+   *
+   * The board's own statement, rather than "the last column": a board may end in
+   * more than one of them - Released beside Cancelled - and the last of a list that
+   * is not in order is not the end of anything.
+   */
+  resolved: boolean;
   /** Values of the board's column field that this column collects. */
   fieldValues: string[];
 }

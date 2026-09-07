@@ -32,7 +32,6 @@ test('default thresholds are pinned, so a change is deliberate', () => {
   assert.equal(DEFAULT_CONFIG.emptyFieldThreshold, 0.95);
   assert.equal(DEFAULT_CONFIG.minIssuesForFieldCheck, 50);
   assert.equal(DEFAULT_CONFIG.unassignedThreshold, 0.2);
-  assert.equal(DEFAULT_CONFIG.agingWipDays, 30);
   assert.equal(DEFAULT_CONFIG.maxBoardColumns, 7);
   assert.equal(DEFAULT_CONFIG.minProjectIssues, 10);
 });
