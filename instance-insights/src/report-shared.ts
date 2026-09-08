@@ -435,16 +435,22 @@ export const CATEGORY_WEIGHTS_NOTE = (() => {
  * weighting is a judgement: a report that pretends otherwise loses the argument the
  * moment someone disagrees with one number, whereas one that shows every step
  * survives the disagreement.
+ *
+ * What a licence costs is named the way the check names it, in both cases: a paid
+ * subscription bills the seat, a plan with a user limit gives it to nobody else.
+ * A cost in money would be wrong on a free instance, and one wrong sentence is
+ * enough to put the rest of the report in doubt.
  */
 export const WEIGHT_REASON =
-  'Why these shares: an unused licence costs money every month, so licences weigh ' +
-  'most. Fields, process and governance weigh the same - each of them decides ' +
-  'whether the work in this instance can be found, trusted and owned. The ' +
-  'portfolio weighs least, because a forgotten project costs attention rather than ' +
-  'money. The setup of the instance weighs with the middle three: a server that has ' +
-  'outgrown its memory, or one that cannot send an email, undoes the work the other ' +
-  'categories describe - and where the server is not yours to look after, those ' +
-  'checks step aside and leave their points to the rest. ' +
+  'Why these shares: an unused licence is in the invoice, or a seat nobody else ' +
+  'can have, so licences weigh most. Fields, process and governance weigh the ' +
+  'same - each of them decides whether the work in this instance can be found, ' +
+  'trusted and owned. The portfolio weighs least, because a forgotten project ' +
+  'takes attention and nothing else. The setup of the instance weighs with the ' +
+  'middle three: a server that has outgrown its memory, or one that cannot send ' +
+  'an email, undoes the work the other categories describe - and where the server ' +
+  'is not yours to look after, those checks step aside and leave their points to ' +
+  'the rest. ' +
   'Inside a category the same idea sets the shares: a check weighs more the ' +
   'more it costs to leave alone. The numbers are a judgement, not a law - and every ' +
   'step from a measurement to a point is in this report, so a reader who would ' +

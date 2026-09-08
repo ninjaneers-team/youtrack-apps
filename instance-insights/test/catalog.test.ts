@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { CHECKS, MAX_ITEM_ID } from '../src/checks/catalog.ts';
 import { effectiveRatio, runChecks, runScan, score } from '../src/engine.ts';
+import * as reportText from '../src/report-shared.ts';
 import { CATEGORY_WEIGHT, DEFAULT_CONFIG, severityFromRatio } from '../src/types.ts';
 import type { ScanContext } from '../src/types.ts';
 import {
@@ -548,25 +549,43 @@ test('when no field name can be reached the check is skipped, not scored', async
   assert.equal(result.overallScore, null);
 });
 
-test('no check claims a cost in money', () => {
+test('nothing the report says claims a cost in money', async () => {
   /*
    * YouTrack runs on free plans too, where a seat is not billed at all - it is one
    * of a limited number. A sentence about money would simply be false on such an
    * instance, and a report is only as trustworthy as its least accurate sentence.
+   *
+   * The checks alone are not the whole report: the note explaining the weighting
+   * said an unused licence costs money every month, which is the one claim the
+   * licence check takes care to avoid. So the sentences the report writes about
+   * itself are read here too, and so are the headlines a scan produces.
    */
   // Currency signs as escapes, so this file stays plain ASCII like the rest.
-  const money = /costs? money|cheaper|per user per month|[\u20AC$\u00A3]\s?\d/i;
+  const money = /\bmoney\b|cheaper|per user per month|[\u20AC$\u00A3]\s?\d/i;
+  const said: [string, string][] = [];
   for (const check of CHECKS) {
     for (const [field, text] of Object.entries({
       why: check.why,
       legitimateWhen: check.legitimateWhen,
       whatItInvolves: check.whatItInvolves,
     })) {
-      assert.ok(
-        !money.test(text),
-        `${check.id}.${field} claims a cost in money: ${text}`,
-      );
+      said.push([`${check.id}.${field}`, text]);
     }
+  }
+  for (const [name, value] of Object.entries(reportText)) {
+    if (typeof value === 'string') {
+      said.push([`report-shared.${name}`, value]);
+    }
+  }
+  const result = await runScan(CHECKS, contextOn(syntheticInstance(NOW)));
+  for (const finding of result.findings) {
+    said.push([`${finding.checkId}.headline`, finding.headline]);
+    for (const row of finding.evidence ?? []) {
+      said.push([`${finding.checkId}.evidence`, row.label]);
+    }
+  }
+  for (const [where, text] of said) {
+    assert.ok(!money.test(text), `${where} claims a cost in money: ${text}`);
   }
 });
 
