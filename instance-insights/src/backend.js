@@ -723,9 +723,10 @@ exports.httpHandler = {
     {
       method: 'GET',
       path: 'state',
-      // Both widgets are administrator-only, so this is too: what the state holds
-      // is harmless in itself - a score, counts, ratios - but it is a statement
-      // about the instance, and the app answers those to administrators.
+      /* Low-level Admin Write, which is what this key stands for and what both
+         widgets ask for as well. The stored run is the reason: it was collected
+         with an administrator's reach, and this endpoint hands it to whoever may
+         call it. One key, not a list - YouTrack reads a list as "any of these". */
       permissions: ['ADMIN_UPDATE_APP'],
       /** @param {HandlerCtx} ctx @returns {void} */
       handle: function handle(ctx) {

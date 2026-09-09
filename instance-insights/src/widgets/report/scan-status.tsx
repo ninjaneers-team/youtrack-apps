@@ -103,8 +103,8 @@ const IDLE_TEXT = {
   unreadable:
     "The app's stored state could not be read, so neither earlier scans nor what " +
     'was marked as intentional are known here. A scan still reads the instance, ' +
-    'but it will not be recorded. Reading it needs permission to manage apps in ' +
-    'this instance; with that permission, reloading usually settles it.',
+    'but it will not be recorded. Reading it needs the Low-level Admin Write ' +
+    'permission in this instance; with it, reloading usually settles this.',
   scannedBefore:
     'The numbers above come from earlier scans; their findings are not here. A ' +
     'scan brings them back from the instance as it stands now.',

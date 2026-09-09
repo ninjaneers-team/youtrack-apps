@@ -240,8 +240,8 @@ const AppComponent: React.FunctionComponent = () => {
     return (
       <div className="score-tile">
         <p className="score-tile__error">
-          {'The stored score could not be read. Reading it needs permission to ' +
-            'manage apps in this instance.'}
+          {'The stored score could not be read. Reading it needs the Low-level ' +
+            'Admin Write permission in this instance.'}
         </p>
         <Button onClick={readAgain}>{'Try again'}</Button>
       </div>

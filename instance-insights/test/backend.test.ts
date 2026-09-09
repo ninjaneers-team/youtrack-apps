@@ -228,18 +228,46 @@ test('entries without a timestamp cannot sit on a trend and are dropped', () => 
   assert.deepEqual(state.history, [{ score: 60, at: '2026-08-01T00:00:00.000Z' }]);
 });
 
-test('every endpoint requires the app admin permission', () => {
-  // The widgets are administrator-only, and an endpoint that answered everyone
-  // would hand the same statement about the instance to any account with a login.
-  for (const [method, path] of [
-    ['GET', 'state'],
-    ['POST', 'scan'],
-    ['POST', 'ignore'],
-  ] as const) {
+/**
+ * The one permission that guards both views and every endpoint.
+ *
+ * `ADMIN_UPDATE_APP` is the key YouTrack gives to Low-level Admin Write: creating,
+ * updating and deleting groups and roles, integrations, database backups - and it
+ * implies Low-level Admin Read. The name looks as though it were about installing
+ * apps, which it is not; it is the strongest global write permission a manifest can
+ * ask for, and there is no key for "system administrator" to ask for instead.
+ */
+const ADMIN_PERMISSION = 'ADMIN_UPDATE_APP';
+
+test('every endpoint and both views require the same one admin permission', () => {
+  /*
+   * What is guarded is not the scan - a scan runs with the permissions of whoever
+   * started it and sees no more than they do - but the stored run: it was collected
+   * with an administrator's reach and is handed back to whoever may call the
+   * endpoint. So the report's own reader is the one this gate is about.
+   *
+   * Exactly one key, because a list is read as "any of these": a second entry would
+   * widen the gate rather than narrow it, which is the mistake that looks like
+   * tightening security.
+   */
+  const declared: [string, string[] | undefined][] = [
+    ['GET state', endpoint('GET', 'state').permissions],
+    ['POST scan', endpoint('POST', 'scan').permissions],
+    ['POST started', endpoint('POST', 'started').permissions],
+    ['POST ignore', endpoint('POST', 'ignore').permissions],
+  ];
+  const manifest = JSON.parse(
+    readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'),
+  ) as { widgets: { key: string; permissions?: string[] }[] };
+  for (const widget of manifest.widgets) {
+    declared.push([`widget ${widget.key}`, widget.permissions]);
+  }
+  assert.equal(manifest.widgets.length, 2, 'both widgets must be declared');
+  for (const [what, permissions] of declared) {
     assert.deepEqual(
-      endpoint(method, path).permissions,
-      ['ADMIN_UPDATE_APP'],
-      `${method} ${path} must not answer a non-administrator`,
+      permissions,
+      [ADMIN_PERMISSION],
+      `${what} must ask for ${ADMIN_PERMISSION} and nothing besides it`,
     );
   }
 });

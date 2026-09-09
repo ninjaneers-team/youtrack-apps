@@ -216,8 +216,10 @@ says it and leaves the button alone: nothing here locks the app, and a scan whos
 browser was closed cannot leave it stuck.
 
 Who can read all this is the instance's own business, and it is settled twice. Both
-views require permission to manage apps, and so does each of the four endpoints the
-app answers on - so what it keeps is readable to administrators and to nobody else.
+views ask for Low-level Admin Write - the permission that carries administering the
+instance itself, including its groups and roles - and so does each of the four
+endpoints the app answers on. What the app keeps is therefore readable to
+administrators and to nobody else.
 Adding people to the app's visibility in YouTrack does not change that, and it
 cannot widen what a scan sees either: every request runs with the permissions of the
 person who opened the page, never with permissions of the app's own.
