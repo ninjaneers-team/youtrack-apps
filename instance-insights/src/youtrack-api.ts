@@ -134,7 +134,17 @@ const ACTIVITY_CATEGORIES = [
 const COUNT_FIRST_WAIT_MS = 100;
 const COUNT_WAIT_GROWTH = 1.6;
 const COUNT_MAX_WAIT_MS = 1_000;
-/** After this long, a count is treated as one the instance will not deliver. */
+/**
+ * How much waiting a count gets before it counts as one the instance will not
+ * deliver.
+ *
+ * Measured as the pauses between asks, not as time on the clock. A batch hands
+ * every query over at once, so one at the back of it can sit in the queue for
+ * longer than this budget before the instance has been asked even once - and a
+ * budget spent waiting for a slot is gone by the time the first `-1` arrives. A
+ * count a browser answers in milliseconds came back from a scan as one the
+ * instance never delivered, for that reason alone.
+ */
 const COUNT_BUDGET_MS = 20_000;
 
 /**
@@ -954,7 +964,9 @@ export class YouTrackApiClient implements YouTrackClient {
 
   private async countOf(query: string): Promise<number> {
     const budget = this.options.countBudgetMs ?? COUNT_BUDGET_MS;
-    const until = Date.now() + budget;
+    // Only the pauses this loop takes itself, so that queueing and rate-limit
+    // backoff cannot spend a budget meant for the instance.
+    let waited = 0;
     let wait = COUNT_FIRST_WAIT_MS;
     for (;;) {
       const value = countIn(
@@ -970,13 +982,14 @@ export class YouTrackApiClient implements YouTrackClient {
       if (value >= 0) {
         return value;
       }
-      if (Date.now() >= until) {
+      if (waited >= budget) {
         throw new CountStillComputing(
-          `The instance was still computing this count after ${budget / MS_PER_SECOND} seconds`,
+          `The instance was still computing this count after ${budget / MS_PER_SECOND} seconds of waiting`,
         );
       }
       // -1 means the count is still being computed.
       await this.sleep(wait);
+      waited += wait;
       wait = Math.min(COUNT_MAX_WAIT_MS, Math.round(wait * COUNT_WAIT_GROWTH));
     }
   }

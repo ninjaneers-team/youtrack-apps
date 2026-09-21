@@ -592,6 +592,23 @@ test('a count that is still being computed is asked for again, soon', async () =
   assert.ok(elapsed < 500, `two waits took ${elapsed} ms`);
 });
 
+test('the budget of a count is its own waiting, not the time a request took', async () => {
+  let asked = 0;
+  /* Every answer takes longer than the whole budget, which is what a batch does to
+     the query at the back of it: it waits for a slot while the instance has not been
+     asked once. Counted as elapsed time, the budget is gone before the first `-1`
+     arrives and a count the instance delivers on the second ask is reported as one
+     it never delivered. */
+  const slow: ApiTransport = <T>(): Promise<T> =>
+    new Promise<T>(resolve => {
+      setTimeout(() => resolve({ count: ++asked === 1 ? -1 : 42 } as T), 120);
+    });
+  const client = new YouTrackApiClient(slow, { gapMs: NO_GAP, countBudgetMs: 100 });
+
+  assert.equal(await client.count('#Unresolved'), 42);
+  assert.equal(asked, 2);
+});
+
 test('a count the instance never delivers gives up saying so', async () => {
   const never: ApiTransport = <T>(): Promise<T> => Promise.resolve({ count: -1 } as T);
   const client = new YouTrackApiClient(never, { gapMs: NO_GAP, countBudgetMs: 300 });
