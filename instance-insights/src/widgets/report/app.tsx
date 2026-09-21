@@ -393,6 +393,16 @@ const ScanStatus: React.FunctionComponent<ScanStatusProps> = ({
   }
 };
 
+/**
+ * Whether the trend may state a movement under what is on screen.
+ *
+ * A stopped scan is not on the trend, so a movement printed below it would compare
+ * two scans that are both somebody else's.
+ */
+function movementFits(state: ScanState): boolean {
+  return state.phase !== 'done' || !state.stopped;
+}
+
 const AppComponent: React.FunctionComponent = () => {
   const [state, setState] = useState<ScanState>({phase: 'idle'});
   const [ignored, setIgnored] = useState<ReadonlySet<string>>(new Set());
@@ -676,6 +686,7 @@ const AppComponent: React.FunctionComponent = () => {
             history={history}
             now={openedAt}
             withScore={state.phase !== 'done'}
+            withMovement={movementFits(state)}
           />
         )}
         scannedBefore={history.length > 0}

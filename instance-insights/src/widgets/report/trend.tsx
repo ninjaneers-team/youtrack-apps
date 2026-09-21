@@ -265,7 +265,17 @@ export const TrendSection: React.FunctionComponent<{
   now: Date;
   /** False while a fresh report is on screen, which states the score itself. */
   withScore: boolean;
-}> = ({history, now, withScore}) => {
+  /**
+   * False for a scan that read part of the instance.
+   *
+   * The chart is the scans this app kept, and a stopped run is not one of them. Its
+   * report is still on the page above, though, and a movement against "the previous
+   * scan" printed under it reads as the movement of what the reader is looking at -
+   * while both scans it compares are other ones. The picture carries its own dates
+   * and can stay; the sentence and the list cannot say whose scans they are.
+   */
+  withMovement: boolean;
+}> = ({history, now, withScore, withMovement}) => {
   const trend = useMemo(() => trendFrom(history), [history]);
   const latest = history.find(entry => entry.score !== null);
   const newest = trend.points[trend.points.length - 1];
@@ -292,10 +302,10 @@ export const TrendSection: React.FunctionComponent<{
           {/* Reopening the page shows stored numbers and no findings, and a number
               that a decision raised looks like an instance that improved. */}
           <DecisionShare reported={newest.score} measured={measured} show={withScore}/>
-          <p className="trend__delta">{trendSentence(trend, age)}</p>
+          {withMovement ? <p className="trend__delta">{trendSentence(trend, age)}</p> : null}
         </div>
       </div>
-      <Moved history={history}/>
+      {withMovement ? <Moved history={history}/> : null}
     </section>
   );
 };
