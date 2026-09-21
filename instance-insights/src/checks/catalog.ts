@@ -1337,23 +1337,41 @@ const dormantProjects: CheckDefinition = checkOf({
     /* A project without issues cannot have issue activity, and the total is already
        known: asking about it would be a round trip for a known answer. */
     const withIssues = projects.filter((p) => p.issuesCount > 0);
-    const activity = requireCounts(
-      await ctx.client.countMany(
-        withIssues.map((p) => QUERIES.projectActivitySince(p.shortName, since)),
-      ),
+    const activity = await ctx.client.countMany(
+      withIssues.map((p) => QUERIES.projectActivitySince(p.shortName, since)),
     );
     const dormant: Project[] = projects.filter((p) => p.issuesCount === 0);
+    let unanswered = 0;
     for (const [index, project] of withIssues.entries()) {
-      if (activity[index] === 0) dormant.push(project);
+      const result = activity[index];
+      /* A project the instance did not answer for is neither dormant nor active,
+         so it leaves the population rather than being counted as one or the other.
+         It used to take the whole check out of the score instead: one query the
+         instance was still computing, and the category lost the larger half of its
+         weight without the report saying which project it was. */
+      if (!result || 'failed' in result) {
+        unanswered++;
+        continue;
+      }
+      if (result.count === 0) dormant.push(project);
+    }
+
+    const measured = projects.length - unanswered;
+    if (measured === 0) {
+      throw new CheckSkipped('The instance answered for none of its projects.');
     }
     if (dormant.length === 0) return null;
 
-    const ratio = share(dormant.length, projects.length);
+    const ratio = share(dormant.length, measured);
     return {
       itemKind: 'project',
-      headline: `${dormant.length} of ${plural(projects.length, 'project')} that ${agree(projects.length, 'is', 'are')} not archived ${agree(dormant.length, 'has', 'have')} had no activity for more than ${ctx.config.dormantProjectDays} days.`,
+      headline: `${dormant.length} of ${plural(measured, 'project')} that ${agree(measured, 'is', 'are')} not archived ${agree(dormant.length, 'has', 'have')} had no activity for more than ${ctx.config.dormantProjectDays} days.`,
       ratio,
-      total: projects.length,
+      total: measured,
+      evidence:
+        unanswered > 0
+          ? [{ label: 'Projects the instance did not answer for', value: unanswered }]
+          : [],
       items: toItems(dormant, (p) => ({ id: p.id, label: p.shortName })),
     };
   },

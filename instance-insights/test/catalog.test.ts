@@ -535,6 +535,65 @@ test('a field the instance did not answer for is counted, not called empty', asy
   );
 });
 
+/**
+ * Three projects with issues, and a count rule for all but the last of them. A
+ * query no rule matches comes back as a refusal, which is how the mock says what a
+ * count the instance never delivered says in a scan.
+ */
+function instanceWithOneProjectUnanswered(answered: string[]): MockYouTrackClient {
+  const keys = ['WEB', 'API', 'OPS'];
+  return new MockYouTrackClient({
+    projects: keys.map((shortName, index) => ({
+      id: `p-${index}`,
+      shortName,
+      name: shortName,
+      archived: false,
+      issuesCount: 10,
+      leader: { id: 'l', login: 'lead', banned: false },
+    })),
+    customFields: [],
+    users: [],
+    boards: [],
+    groups: [],
+    // Quiet everywhere the instance answered: the count of issues touched since the
+    // cutoff is zero, so every answered project is dormant.
+    countRules: answered.map((shortName) => ({
+      match: new RegExp(`project: \\{${shortName}\\} updated:`),
+      count: 0,
+    })),
+  });
+}
+
+test('a project the instance did not answer for leaves the population, not the score', async () => {
+  const dormantProjects = CHECKS.find((c) => c.id === 'portfolio.dormant-projects');
+  assert.ok(dormantProjects);
+
+  const result = await runScan(
+    [dormantProjects],
+    contextOn(instanceWithOneProjectUnanswered(['WEB', 'API'])),
+  );
+  const finding = result.findings[0];
+
+  assert.deepEqual((finding?.items ?? []).map((i) => i.label), ['WEB', 'API']);
+  // Two of the two projects that answered, not two of three.
+  assert.equal(finding?.ratio, 1);
+  assert.match(finding?.headline ?? '', /^2 of 2 projects /);
+  assert.equal(
+    finding?.evidence.find((e) => e.label === 'Projects the instance did not answer for')
+      ?.value,
+    1,
+  );
+});
+
+test('when no project answers the dormant check is skipped, not scored', async () => {
+  const dormantProjects = CHECKS.find((c) => c.id === 'portfolio.dormant-projects');
+  assert.ok(dormantProjects);
+
+  const outcomes = await runChecks([dormantProjects], contextOn(instanceWithOneProjectUnanswered([])));
+
+  assert.equal(outcomes[0]?.status, 'skipped');
+});
+
 test('when no field name can be reached the check is skipped, not scored', async () => {
   const emptyField = CHECKS.find((c) => c.id === 'fields.empty-field');
   assert.ok(emptyField);
