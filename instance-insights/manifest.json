@@ -1,0 +1,44 @@
+{
+  "name": "instance-insights",
+  "title": "Instance Insights",
+  "description": "Finds what has grown in a YouTrack instance over time: unused licences, projects without an owner, inconsistent custom fields, states that never count as resolved. Produces a report with a score, the findings behind it and what resolving each one involves. Read-only - it changes nothing in the instance. Both views are open only to accounts holding Low-level Admin Write - YouTrack's permission for administering the instance itself - and every request runs with the permissions of whoever opened them. A scan reads through the REST API and asks roughly one question per account and per board, and two per project and per custom field: a few hundred requests on a small instance, a few thousand on a large one, at no more than twenty a second and stoppable at any point. The report states how many requests it sent and how long it took. Needs YouTrack 2024.3 or newer. On versions before 2026.2 it needs the classic interface: with YouTrack Lite switched on, the dashboard tile does not appear.",
+  "$schema": "https://json.schemastore.org/youtrack-app.json",
+  "version": "1.0.0",
+  "vendor": {
+    "name": "Ninjaneers GmbH",
+    "url": "https://ninjaneers.de",
+    "email": "info@ninjaneers.de"
+  },
+  "url": "https://ninjaneers.de",
+  "icon": "icon.svg",
+  "minYouTrackVersion": "2024.3.0",
+  "changeNotes": "First release. Twenty-two read-only checks across licences, custom fields, process hygiene, governance and the project portfolio, each contributing to a score that can be recomputed by hand, and each saying what resolving it involves. Findings can be marked as intentional, which moves the score and keeps the report worth reopening. Markdown and print export. The score of the last 24 scans is kept as a trend.",
+  "widgets": [
+    {
+      "key": "report",
+      "name": "Instance Insights",
+      "description": "Runs a read-only scan of this instance and reports where its configuration and process have drifted, with what resolving each finding involves.",
+      "indexPath": "report/index.html",
+      "extensionPoint": "MAIN_MENU_ITEM",
+      "iconPath": "report/widget-icon.svg",
+      "permissions": [
+        "ADMIN_UPDATE_APP"
+      ]
+    },
+    {
+      "key": "score",
+      "name": "Instance Insights score",
+      "description": "Shows the score from the last scan and opens the report behind it.",
+      "indexPath": "score/index.html",
+      "extensionPoint": "DASHBOARD_WIDGET",
+      "iconPath": "score/widget-icon.svg",
+      "permissions": [
+        "ADMIN_UPDATE_APP"
+      ],
+      "defaultDimensions": {
+        "width": "4fr",
+        "height": "1fr"
+      }
+    }
+  ]
+}

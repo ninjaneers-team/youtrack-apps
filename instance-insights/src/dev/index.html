@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <!-- ring-ui carries a dark palette on a class. YouTrack sets it on the widget
+       document according to the user's theme, so the dev page offers both:
+       ?theme=dark (default, matching the instance used here) or ?theme=light. -->
+  <head>
+    <meta charset="utf-8">
+    <title>Instance Insights - dev</title>
+    <style>
+      body { margin: 0; }
+      #dev-bar {
+        font: 12px/1.7 system-ui, sans-serif;
+        padding: 4px 10px;
+        background: #fff8e1;
+        border-bottom: 1px solid #e6c77a;
+        color: #6b5600;
+      }
+      #dev-bar a { color: inherit; }
+      #dev-note { font-family: ui-monospace, Menlo, monospace; }
+    </style>
+  </head>
+  <body>
+    <div id="dev-bar">
+      <b>dev</b> - widget outside YouTrack, Host API stubbed, REST proxied to the
+      instance. Widgets:
+      <a href="?widget=report">report</a> -
+      <a href="?widget=score">score</a> -
+      storage:
+      <a href="?widget=report">instance</a> -
+      <a href="?widget=report&amp;state=stub&amp;scenario=fresh">stub/fresh</a> -
+      <a href="?widget=report&amp;state=stub&amp;scenario=trend">stub/trend</a> -
+      theme:
+      <a href="?widget=report&amp;theme=dark">dark</a> -
+      <a href="?widget=report&amp;theme=light">light</a>
+      <span id="dev-note"></span>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="main.tsx"></script>
+  </body>
+</html>

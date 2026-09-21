@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    /* The handler is checked, never compiled: it is copied into the app package as
+       it is, because YouTrack runs it as plain JavaScript. So its types live in
+       JSDoc, and this is what reads them. */
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": true,
+
+    /* The app sandbox, which is neither Node nor a browser: CommonJS modules, the
+       standard library and nothing else. No "types", so an @types package on disk
+       cannot lend the handler a global the sandbox does not have. */
+    "module": "commonjs",
+    "moduleResolution": "node10",
+    "target": "es2023",
+    "lib": ["es2023"],
+    "types": [],
+
+    /* The stored shapes are declared once, in the engine, and the handler names
+       them through JSDoc. A comment carries no code into the package, and a change
+       to a stored shape now fails here instead of in an instance. */
+    "allowImportingTsExtensions": true,
+
+    "strict": true,
+    "noImplicitReturns": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/backend.js"]
+}

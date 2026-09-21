@@ -1,0 +1,33 @@
+{
+  "entityTypeExtensions": [
+    {
+      "entityType": "AppGlobalStorage",
+      "properties": {
+        "lastScan": {
+          "type": "string",
+          "description": "Aggregates of the most recent scan as JSON: overall score, finding count, per-check ratios and a timestamp. Never issue content or personal names."
+        },
+        "ignoredChecks": {
+          "type": "string",
+          "description": "JSON array of check IDs an administrator marked as intentional."
+        },
+        "ignoredItems": {
+          "type": "string",
+          "description": "JSON array of {check, item}: single objects an administrator marked as intentional. The item is configuration of the instance - a project key, a board id, a field or group name - never an account and never issue content."
+        },
+        "lastRun": {
+          "type": "string",
+          "description": "The findings of the most recent scan as JSON, so that reopening the report does not require another scan: per check its status, ratio, headline, evidence and the configuration objects it named - project keys, board ids, field and group names. Never issue content, and never an account: the accounts the licence check names are counted and not stored."
+        },
+        "scanHistory": {
+          "type": "string",
+          "description": "JSON array of the last 24 scan aggregates, newest first, for the score trend. Same aggregates as lastScan: numbers and timestamps only."
+        },
+        "scanStarted": {
+          "type": "string",
+          "description": "ISO 8601 instant when a scan was last started, so that a second widget can say a scan is already under way instead of asking the instance everything twice. A timestamp, nothing about the instance itself."
+        }
+      }
+    }
+  ]
+}
