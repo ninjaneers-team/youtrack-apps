@@ -34,7 +34,7 @@ test('a list of affected objects says what they are and how many', async () => {
      page and the Markdown file both answered them; the document did not. */
   assert.match(html, /Affected projects \(\d+\)/);
   assert.match(html, /Affected board \(1\)/);
-  assert.match(html, /Affected value lists \(\d+\)/);
+  assert.match(html, /Affected sets of values \(\d+\)/);
   /* The one noun that does not take its plural at the end, in the singular the
      synthetic instance produces - the plural of it is pinned in
      test/report-shared.test.ts. */

@@ -141,7 +141,11 @@ export const ITEM_NOUN: Record<ItemKind, { one: string; many: string }> = {
   board: { one: 'board', many: 'boards' },
   field: { one: 'field', many: 'fields' },
   'field-group': { one: 'group of fields', many: 'groups of fields' },
-  'value-list': { one: 'value list', many: 'value lists' },
+  /* A row of the duplicate-list check is not one list: it is a set of values that
+     several lists hold, and the row says how many. Called "value list" here, the
+     collapsed label read "Affected value lists (3)" over a headline counting
+     forty-four of them. */
+  'value-list': { one: 'set of values', many: 'sets of values' },
   group: { one: 'user group', many: 'user groups' },
   account: { one: 'account', many: 'accounts' },
 };

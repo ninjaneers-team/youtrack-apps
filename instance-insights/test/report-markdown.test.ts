@@ -379,5 +379,5 @@ test('a finding says what its objects are, never that they are objects', async (
      it, and "object" is a word out of the code rather than out of the instance.
      Every check that lists something declares what kind it is. */
   assert.ok(!/Affected objects/.test(md), md.match(/Affected [a-z ]+\(\d+\)/g)?.join(' | '));
-  assert.match(md, /Affected value lists \(\d+\):/);
+  assert.match(md, /Affected sets of values \(\d+\):/);
 });

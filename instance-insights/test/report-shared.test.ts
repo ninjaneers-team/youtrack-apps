@@ -154,7 +154,7 @@ test('a plural is written out, not made by appending an s', () => {
      appends an s, a report with two of them read "2 group of fieldss". */
   assert.equal(itemNoun('field-group', 1), 'group of fields');
   assert.equal(itemNoun('field-group', 2), 'groups of fields');
-  assert.equal(itemNoun('value-list', 2), 'value lists');
+  assert.equal(itemNoun('value-list', 2), 'sets of values');
   // A check that lists nothing countable falls back on the code's own word.
   assert.equal(itemNoun(undefined, 2), 'objects');
 });
