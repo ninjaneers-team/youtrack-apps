@@ -173,6 +173,26 @@ function oneOf(known, value) {
   return known.indexOf(word) === -1 ? null : word;
 }
 
+/**
+ * A measured share as stored: a number from zero to one.
+ *
+ * Every other value kept here is held to a list of the words this app uses. A ratio
+ * is a number instead, and the report draws it as a percentage and as a bar, so a
+ * value outside the range would sit on the trend as "4200 %" for as long as the scan
+ * is kept. The range is part of what a ratio is, so it is applied where the value
+ * enters storage rather than where it is drawn.
+ *
+ * @param {unknown} value
+ * @returns {number}
+ */
+function shareOf(value) {
+  const number = Number(value);
+  if (!(number > 0)) {
+    return 0;
+  }
+  return number > 1 ? 1 : number;
+}
+
 /** A timestamp we can put on a trend: ISO 8601 in UTC, as the report sends it. */
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 
@@ -349,7 +369,7 @@ function checkAggregates(sentChecks) {
       return {
         id: String(entry.id),
         status: String(entry.status),
-        ratio: finding ? Number(finding.ratio) || 0 : 0
+        ratio: finding ? shareOf(finding.ratio) : 0
       };
     });
 }
@@ -497,7 +517,7 @@ function runFinding(sentFinding, withItems) {
   const finding = {
     severity: severity,
     headline: String(fields.headline),
-    ratio: Number(fields.ratio) || 0,
+    ratio: shareOf(fields.ratio),
     evidence: runEvidence(fields.evidence)
   };
   copyNumber(finding, 'total', fields.total);

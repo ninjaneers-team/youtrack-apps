@@ -24,10 +24,12 @@ work nobody has touched in months.
 - Two exports: a printable document to hand on outside the instance, and Markdown to
   paste into the issue that tracks the cleanup.
 
-It reads, it never writes. A scan runs in the browser of the administrator who
-starts it, with that administrator's own permissions - no service account, no stored
-token, no background job. What it keeps between visits stays in the instance's own
-database, and no account is named in it.
+It reads, it never writes. Report and dashboard tile open only for accounts holding
+Low-level Admin Write, YouTrack's permission for administering the instance itself.
+A scan runs in the browser of the administrator who starts it, with that
+administrator's own permissions - no service account, no stored token, no background
+job. What it keeps between visits stays in the instance's own database, and no
+account is named in it.
 
 Needs YouTrack 2024.3 or newer. On versions before 2026.2 the dashboard tile needs
 the classic interface. MIT licensed.

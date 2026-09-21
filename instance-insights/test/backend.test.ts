@@ -427,6 +427,35 @@ test('a scan keeps its findings, and the trend keeps only its numbers', () => {
   ]);
 });
 
+test('a ratio outside zero and one is stored as a share, not as it was sent', () => {
+  /* Every other stored value is held to a list of the words this app writes. A
+     ratio is a number, and the report draws it as a percentage on the trend and as
+     a bar in the report, where 4.2 would read as "420 %" until the scan is replaced. */
+  const sent = (ratio: unknown): Record<string, unknown> => {
+    const check = checkBody('portfolio.tiny-projects');
+    (check.finding as Record<string, unknown>).ratio = ratio;
+    return check;
+  };
+  for (const [ratio, stored] of [[4.2, 1], [-0.5, 0], ['many', 0]] as const) {
+    const { properties } = call('POST', 'scan', {}, {
+      score: 73,
+      scoreAsMeasured: 73,
+      findings: 1,
+      at: '2026-08-01T00:00:00.000Z',
+      requests: 1,
+      seconds: 1,
+      throttled: 0,
+      checks: [sent(ratio)],
+    });
+    const run = JSON.parse(properties.lastRun ?? 'null');
+    assert.equal(run.checks[0].finding.ratio, stored, `finding of ${String(ratio)}`);
+    const [newest] = storedHistory(properties) as unknown as Array<{
+      checks: Array<{ ratio: number }>;
+    }>;
+    assert.equal(newest?.checks[0]?.ratio, stored, `aggregate of ${String(ratio)}`);
+  }
+});
+
 test('the weight of an object survives the handler, or a marked object rescores', () => {
   const { properties } = call('POST', 'scan', {}, {
     score: 62,
