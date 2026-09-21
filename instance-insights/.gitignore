@@ -10,7 +10,7 @@ instance-insights.zip
 # and no dist/ - but it is two megabytes and lands right next to one.
 *.tgz
 
-# Credentials for the local instance — never commit these.
+# Credentials for the local instance - never commit these.
 .env
 .env.local
 
