@@ -5,7 +5,7 @@
  * request it makes is a request that instance has to serve. That cost has to be
  * known before an app is installed anywhere real, and it scales with the instance,
  * not with the app: one activity lookup per licensed account, two issue counts per
- * project, three per board and one per custom field. A board costs the same whatever
+ * project, two per custom field and one per board. A board costs the same whatever
  * its number of columns, because its cards are counted for the board at once.
  *
  * Part one counts requests against an in-memory instance of a given size - exact,
