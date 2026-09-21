@@ -32,6 +32,36 @@ test('every catalog check fires on the synthetic instance', async () => {
   assert.equal(result.findings.length, CHECKS.length);
 });
 
+test('a list of objects is never labelled with a number the headline contradicts', async () => {
+  /* The duplicate-list check counts lists and lists sets of values, and its card
+     read "44 of 58 value lists are a copy" over "Affected value lists (3)". Both
+     numbers were right and the label was wrong: a row there is a set of values that
+     several lists hold. So either the rows are the things the headline counts and
+     there are as many of them, or they are something else and say so. */
+  const result = await runScan(CHECKS, contextOn(syntheticInstance(NOW)));
+
+  for (const finding of result.findings) {
+    const items = finding.items ?? [];
+    if (items.length === 0) continue;
+    const counted = /^(\d+) of \d+ (.+)$/.exec(finding.headline);
+    if (!counted) continue;
+    const [, headlineCount = '', rest = ''] = counted;
+    const nouns = [
+      reportText.itemNoun(finding.itemKind, 1),
+      reportText.itemNoun(finding.itemKind, 2),
+    ];
+    // The label names what the headline counts, so the two numbers are one number.
+    if (nouns.some((noun) => rest.startsWith(noun))) {
+      assert.equal(
+        items.length,
+        Number(headlineCount),
+        `${finding.checkId}: "${finding.headline}" over a list of ${items.length} ` +
+          `${reportText.itemNoun(finding.itemKind, items.length)}`,
+      );
+    }
+  }
+});
+
 test('a finding that weighs its objects can have one of them marked', async () => {
   const result = await runScan(CHECKS, contextOn(syntheticInstance(NOW)));
 

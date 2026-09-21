@@ -255,6 +255,10 @@ export function syntheticData(now: Date): MockData {
     valueBundles: [
       { id: '5-0', name: 'WEB: Types', values: ['Bug', 'Feature', 'Task'] },
       { id: '5-1', name: 'APP: Types', values: ['Task', 'Bug', 'Feature'] },
+      /* A third copy of the same set, so the check counts more redundant lists than
+         it lists rows. Two copies of two sets would make both numbers two, and a
+         guard that compares them would agree with a card that contradicts itself. */
+      { id: '5-6', name: 'LEGACY: Types', values: ['Feature', 'Task', 'Bug'] },
       { id: '5-2', name: 'Severities', values: ['Blocker', 'Minor'] },
       { id: '5-4', name: 'Wordy', values: Array.from({ length: 40 }, (_, i) => `value number ${i}`) },
       { id: '5-5', name: 'Wordy copy', values: Array.from({ length: 40 }, (_, i) => `value number ${i}`) },
