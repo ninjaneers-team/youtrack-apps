@@ -25,11 +25,11 @@ import {
  * so a scan started on the report page shows up here too. Reopening reads the
  * stored aggregates rather than measuring anything.
  *
- * A scan cannot be started from here, and that is deliberate. It is a job in the
- * foreground of whichever tab holds it - a few hundred requests on a small instance
- * and a few thousand on a large one, measured at five and a half minutes for three
- * hundred - and a dashboard is the page a reader leaves first. Left, it dies, and
- * everything it asked the instance was asked for nothing. A tile also has no room
+ * A scan cannot be started from here. It runs in the foreground of whichever tab
+ * holds it - a few hundred requests on a small instance and a few thousand on a
+ * large one, measured at five and a half minutes for three hundred - and a dashboard
+ * is the page a reader leaves first; leaving it ends the scan and discards what it
+ * had already asked the instance. A tile also has no room
  * to show what a job of that length is doing. So the scan lives on the report page,
  * where somebody is watching it, and the tile leads there.
  */
@@ -88,12 +88,11 @@ const ToReport: React.FunctionComponent<{href: string | null; label: string}> = 
 /**
  * The score, and beside it the way to the report.
  *
- * The action sits on this line rather than next to the date below it, and that is a
- * measurement rather than a preference: a tile of the width the manifest asks for
- * leaves 191 px beside the button, the date with a movement behind it needs up to
- * 223 px, and the line it could not hold wrapped into a fourth row the tile has no
- * height for. On this line the button has room to spare, and every line below it
- * gets the full width.
+ * The action sits on this line rather than next to the date below it. Measured at
+ * the width the manifest asks for: 191 px are left beside the button, the date with
+ * a movement behind it needs up to 223 px, and the line then wrapped into a fourth
+ * row the tile has no height for. Here the button has room to spare, and every line
+ * below it gets the full width.
  */
 const ScoreHead: React.FunctionComponent<{
   lastScan: ScanAggregate;

@@ -2,11 +2,10 @@
  * What the three reports say the same way.
  *
  * The report exists three times over - as the page in the app, as the printed
- * document and as the Markdown file - and deliberately so: each has its own rules
- * about what it may name and how it may look. What they must not hold three times
- * over is the vocabulary. A severity label, the sentence that explains the score,
- * the invitation in the footer: a wording kept in three places is a wording that
- * agrees in two of them.
+ * document and as the Markdown file - because each has its own rules about what it
+ * may name and how it may look. The vocabulary is not tripled with them: a severity
+ * label, the sentence that explains the score and the invitation in the footer live
+ * here, since a wording kept in three places ends up agreeing in two of them.
  *
  * Nothing here knows about HTML, Markdown or React. It knows the words and the
  * arithmetic that has to read the same everywhere.
@@ -61,12 +60,11 @@ export function scoreText(n: number): string {
 /**
  * When a scan happened, as all three reports state it.
  *
- * Locale-free on purpose. `toLocaleString()` follows the machine the report is read
- * on, so one administrator read "3.9.2026" and the next "9/3/2026" inside an
- * interface that is English throughout - and no test can see that, because the
- * machine running the test has a locale too. UTC because an app cannot know which
- * zone an instance calls its own, and a time that says which zone it is in beats one
- * the reader has to guess about.
+ * Locale-free. `toLocaleString()` follows the machine the report is read on, so one
+ * administrator sees "3.9.2026" and the next "9/3/2026" inside an interface that is
+ * English throughout, and no test catches it because the machine running the test
+ * has a locale too. UTC, because an app cannot know which zone an instance calls its
+ * own; the zone is named so the reader does not have to assume one.
  */
 export function dateText(at: Date): string {
   return at.toISOString().slice(0, DATE_END);
@@ -430,11 +428,9 @@ export const CATEGORY_WEIGHTS_NOTE = (() => {
 /**
  * Why the shares are what they are.
  *
- * Without it the numbers look chosen at random, and a reader who cannot see the
- * reasoning supplies his own - usually a worse one. It ends by saying that the
- * weighting is a judgement: a report that pretends otherwise loses the argument the
- * moment someone disagrees with one number, whereas one that shows every step
- * survives the disagreement.
+ * Without it the numbers look chosen at random. It ends by naming the weighting as
+ * a judgement, so that a reader who would weigh it differently can still follow the
+ * arithmetic instead of discarding the result.
  *
  * What a licence costs is named the way the check names it, in both cases: a paid
  * subscription bills the seat, a plan with a user limit gives it to nobody else.
@@ -495,8 +491,8 @@ export interface DecisionEffect {
    *
    * Both at the decimal they are printed with, and `reported` taken from the score
    * itself rather than added up from the other two: 67.8 + 0.1 rounds to 67.9 while
-   * the card says 68.0, and a sentence that contradicts the figure above it is
-   * worse than no sentence.
+   * the card says 68.0, which would put the sentence in contradiction with the
+   * figure above it.
    */
   reported: number;
   asMeasured: number;
@@ -505,9 +501,9 @@ export interface DecisionEffect {
 /**
  * What the marked findings are worth, or null while nothing is marked.
  *
- * Marking a finding raises the score, and nothing in the instance changed for it.
- * Reopening the report later shows only the raised number, which reads as an
- * improvement nobody made - so every report states the difference next to the score.
+ * Marking a finding raises the score although nothing in the instance changed.
+ * Reopening the report later would show only the raised number, so every report
+ * states the difference next to the score.
  */
 export function decisionEffect(
   result: ScanResult,
@@ -846,9 +842,9 @@ export interface NoMeasurementGroup {
  * The checks without a measurement, gathered by the reason they give.
  *
  * Three checks look at the server the instance runs on, and on an instance run by
- * somebody else all three step aside with the same sentence. Listed one per line
- * that reads as three things having gone wrong; listed as one line naming three
- * checks it reads as what it is - a part of the report that does not apply here.
+ * somebody else all three step aside with the same sentence. One line naming the
+ * three checks states that once; three separate lines state the same reason three
+ * times and suggest three separate failures.
  * The order the scan produced them in is kept, so a reader who looks for one check
  * finds it where the catalog put it.
  */

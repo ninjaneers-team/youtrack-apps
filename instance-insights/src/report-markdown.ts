@@ -2,9 +2,9 @@
  * Renders a scan result as Markdown. Markdown plus the print view is the whole
  * export story - no PDF library in the sandbox.
  *
- * Deliberately a pure function outside the widgets: the report text is the product,
- * so it is unit-tested rather than eyeballed in an iframe. Takes the ISO timestamp
- * from the caller for the same reason.
+ * A pure function outside the widgets, so the report text can be unit-tested rather
+ * than read off an iframe. The ISO timestamp comes from the caller for the same
+ * reason.
  *
  * Per finding it emits four elements: what was found including the number, why it
  * is worth attention, when it is legitimate, and what the work involves. The footer carries

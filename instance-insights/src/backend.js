@@ -1,24 +1,20 @@
 /**
  * State shared by both widgets, kept in the app's global storage.
  *
- * Why a handler at all, when the scan runs in the frontend: the Host API's own
- * storage keeps values in the visitor's browser and is not tied to a YouTrack
- * account, so a scan started on the report page would leave the dashboard tile
- * claiming no scan had ever run. The last score and the findings an administrator
- * marked as intentional are facts about the instance, so they belong in
- * AppGlobalStorage - YouTrack's mechanism for state owned by the app.
+ * The Host API's storage is per browser and not tied to a YouTrack account, so a
+ * scan started on the report page would be invisible to the dashboard tile. The
+ * last score and the findings marked as intentional belong to the instance, so
+ * they are kept in AppGlobalStorage instead.
  *
- * What is stored: the numbers of the last twenty-four scans, and the findings of
- * the most recent one - headlines, the counts behind them, and the configuration
- * objects they name. No issue content and no accounts: the ones the licence check
- * names are counted here and never written down. And nothing is passed through -
- * every value is copied under a name this file knows, so a field the report gains
- * tomorrow cannot carry instance content into storage by itself.
+ * Stored: the numbers of the last twenty-four scans, and the findings of the most
+ * recent one - headlines, their counts, and the configuration objects they name.
+ * Not stored: issue content and accounts. Values are copied field by field under
+ * names this file knows, so a field added to the report later cannot reach storage
+ * on its own.
  *
- * Extension properties hold primitives, so each structure in here is JSON in a
- * string, and what arrives is `unknown` until it has been checked: a widget of an
- * older version, a hand-edited property and a truncated write are all things this
- * handler survives rather than trusts.
+ * Extension properties hold primitives, so each structure is JSON in a string, and
+ * what is read back is `unknown` until checked: an older widget version, a
+ * hand-edited property and a truncated write all have to be survivable.
  *
  * Widgets reach these endpoints through src/app-state.ts.
  */
@@ -69,8 +65,8 @@ const HISTORY_LIMIT = 24;
 /**
  * How many single objects may be marked as intentional.
  *
- * Storage is shared by the instance and holds aggregates; a cap keeps a long series
- * of clicks from turning it into a list of everything the instance contains.
+ * Storage is shared by the instance and holds aggregates. Without a cap, repeated
+ * marking would turn it into a list of the instance's contents.
  */
 const IGNORED_ITEMS_LIMIT = 500;
 
@@ -89,11 +85,11 @@ const RUN_BYTES_LIMIT = 1048576;
 /**
  * Checks whose objects are people.
  *
- * An administrator sees accounts anyway; keeping a dated list of them is something
- * else, because it outlives both the account and the reason it was made. So a
- * login never becomes a stored identifier, while a project key or a board id may.
- * Enforced here rather than only in the interface, because the interface is not
- * the boundary - and `test/backend.test.ts` holds it against the catalog.
+ * A login never becomes a stored identifier; a project key or a board id may. An
+ * administrator can see the accounts either way, but a stored list of them outlives
+ * both the account and the reason it was written. Enforced here rather than in the
+ * interface alone, since the interface is not the boundary; `test/backend.test.ts`
+ * holds this list against the catalog.
  */
 const CHECKS_NAMING_PEOPLE = [
   'licensing.inactive-users',
@@ -101,17 +97,16 @@ const CHECKS_NAMING_PEOPLE = [
 ];
 
 /**
- * How long an identifier may be before the handler stops believing it.
+ * How long an identifier may be before the handler refuses it.
  *
- * Not a defence against an attacker - only an administrator reaches these
- * endpoints - but a bound on the damage a mistake can do: a wrong value would be
- * copied into storage until the property hits its ceiling, and from then on every
- * write of it fails and the app keeps nothing at all.
+ * Only an administrator reaches these endpoints, so this is a bound on a mistake
+ * rather than on an attack: without it, a wrong value is copied into storage until
+ * the property hits its ceiling, after which every write of that property fails.
  *
- * The number comes from that ceiling: five hundred marked objects of this length
- * are some 125 kilobytes, a thirtieth of what one property holds. Long enough for
- * an id built out of a project key and a field name side by side - our own check
- * IDs are under forty characters - and short enough to refuse a value nobody meant.
+ * The number follows from that ceiling: five hundred marked objects of this length
+ * are some 125 kilobytes, a thirtieth of what one property holds. It fits an id
+ * built from a project key and a field name together - our own check IDs are under
+ * forty characters.
  */
 const MAX_ID_LENGTH = 250;
 
@@ -121,12 +116,11 @@ const MAX_CHECKS = 200;
 /**
  * The words this app uses for its own values.
  *
- * A list rather than a length, because a status is one of four words: something
- * else is not a longer status but a wrong one, and a wrong one would be kept run
- * after run in a property with no byte budget of its own. The free text of a run -
- * headlines, labels, the reason a check gave - is left at its natural length
- * instead, because the run itself has a budget: over it, the objects are dropped
- * whole rather than a sentence cut in half.
+ * Checked against a list rather than a length: a status is one of four words, and
+ * any other value would be stored run after run in a property that has no byte
+ * budget of its own. The free text of a run - headlines, labels, the reason a check
+ * gave - is not bounded that way, because the run has a budget of its own and drops
+ * its objects whole when it exceeds it.
  *
  * `test/backend.test.ts` sends every value the app produces through the handler,
  * so a word added to one of these lists cannot be forgotten here.
@@ -150,8 +144,8 @@ const ITEM_KINDS = [
  * The fields of a value that is an object, or null when it is not one.
  *
  * Reading a field off something that is not an object gives `undefined` rather
- * than an error, and every check below would then pass on a value nobody meant.
- * One named guard instead of one per caller, and the type checker follows it.
+ * than an error, so every check below would pass on an unchecked value. One named
+ * guard instead of one per caller, and the type checker follows it.
  *
  * @param {unknown} value
  * @returns {Record<string, unknown> | null}
@@ -239,7 +233,7 @@ function storedJson(ctx, name) {
  * The checks marked as intentional.
  *
  * Filtered rather than passed on: what is read here is written back on the next
- * mark, so a value nobody meant would settle in storage for good.
+ * mark, so an unchecked value would stay in storage permanently.
  *
  * @param {HandlerCtx} ctx
  * @returns {string[]}
@@ -300,8 +294,8 @@ function markOf(entry) {
  * The aggregates of the last scan, or null.
  *
  * Dated on the way out as well as on the way in: both widgets turn the timestamp
- * into a date, and one no date can be made of throws while the view renders, which
- * leaves an empty frame that reloading does not cure.
+ * into a date, and a value that is not one throws while the view renders. The frame
+ * then stays empty, and reloading does not clear it.
  *
  * @param {HandlerCtx} ctx
  * @returns {ScanAggregate | null}
@@ -363,8 +357,8 @@ function checkAggregates(sentChecks) {
 /**
  * When a scan was last started, or null.
  *
- * The value only ever becomes a sentence about age, and a sentence about a broken
- * value would be worse than no sentence - so anything else counts as nothing.
+ * The value is only ever rendered as a sentence about the age of the scan, so
+ * anything that is not a timestamp this app wrote counts as none.
  *
  * @param {HandlerCtx} ctx
  * @returns {string | null}
@@ -474,9 +468,8 @@ function runCheck(entry, withItems) {
   // Never the objects of a check whose subject is people, whatever was sent.
   const named = CHECKS_NAMING_PEOPLE.indexOf(check.id) === -1;
   const finding = runFinding(fields.finding, withItems && named);
-  /* A finding without a severity cannot be shown the way the report shows one -
-     it sorts by it and colours by it - so the check is left out rather than
-     restored as a finding that says nothing. */
+  /* The report sorts and colours findings by severity, so one without a severity
+     cannot be rendered. The check is left out rather than restored without it. */
   if (finding === null) {
     return null;
   }
@@ -591,9 +584,9 @@ function runItem(entry) {
 /**
  * Writes the findings of one scan, with their objects if they fit.
  *
- * Over budget the objects are dropped whole rather than shortened - half a list
- * that presents itself as a whole one is worse than a count saying the names were
- * not kept - and if that still does not fit, the older run stays.
+ * Over budget the objects are dropped whole rather than shortened, because a
+ * shortened list would still present itself as complete. If the run does not fit
+ * even then, the previous one stays.
  *
  * @param {HandlerCtx} ctx
  * @param {Record<string, unknown>} body
@@ -673,8 +666,8 @@ function requestedHost(ctx) {
  * A number, or null where there is none to have.
  *
  * A score is null when not a single check ran, so absent is a value here. Anything
- * that is not a number becomes absent too rather than NaN, which JSON writes as
- * null and the trend would read back as a point at no height.
+ * that is not a number becomes absent as well, rather than NaN: JSON writes NaN as
+ * null, and the trend would plot it at zero.
  *
  * @param {unknown} value
  * @returns {number | null}
@@ -778,10 +771,10 @@ exports.httpHandler = {
       method: 'POST',
       path: 'started',
       permissions: ['ADMIN_UPDATE_APP'],
-      /* A note that a scan is under way, not a lock. Both widgets can scan, and two
-         scans at once ask the instance everything twice; this is what lets the
-         second one say so first. Deliberately without a lease: a scan whose browser
-         went away would otherwise block the app until an invented expiry passed. */
+      /* Records that a scan is under way. It is not a lock: both widgets can scan,
+         and two at once ask the instance everything twice, so the second one can
+         say so before starting. Without a lease either - a scan whose browser
+         closed would otherwise block the app until an arbitrary expiry passed. */
       /** @param {HandlerCtx} ctx @returns {void} */
       handle: function handle(ctx) {
         const body = bodyOf(ctx);
@@ -830,9 +823,8 @@ exports.httpHandler = {
           return id !== checkId;
         });
         if (body.ignored) {
-          /* The same bound as the number of checks in a scan: a list of marked
-             checks longer than that is not a decision about this app any more, and
-             an unbounded one would grow until every write of the property fails. */
+          /* The same bound as the number of checks in a scan; an unbounded list
+             would grow until every write of the property fails. */
           if (ignored.length >= MAX_CHECKS) {
             ctx.response.code = 400;
             ctx.response.json({

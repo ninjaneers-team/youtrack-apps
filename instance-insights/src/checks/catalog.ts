@@ -491,9 +491,9 @@ function valueKey(bundle: ValueBundle): string {
 /**
  * How long an identifier a check builds may be.
  *
- * The handler refuses a longer one, and a mark nobody can set is worse than a
- * shortened name. `test/catalog.test.ts` holds every check against this, so the
- * two sides cannot drift apart.
+ * The handler refuses a longer one, which would leave the object unmarkable; a
+ * shortened name still marks. `test/catalog.test.ts` holds every check against this,
+ * so the two sides cannot drift apart.
  */
 export const MAX_ITEM_ID = 250;
 

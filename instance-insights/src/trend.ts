@@ -189,17 +189,17 @@ function ran(entry: CheckAggregate | undefined): boolean {
  * rounded percentages instead only caught a movement of nothing at all - a line
  * reading "worse - 80 % -> 80 %" - and let a rounding boundary through as news: on
  * an instance with 2688 open issues one issue moves the share by four hundredths of
- * a point, and "improved - 81 % -> 80 %" for that is a trend nobody can trust. It
- * also read as a contradiction of the score beside it, which says "unchanged"
- * because four hundredths of a point of one check is a thousandth of the hundred.
+ * a point, which was reported as "improved - 81 % -> 80 %". That also contradicted
+ * the score beside it, which says "unchanged", because four hundredths of a point of
+ * one check is a thousandth of the hundred.
  *
  * Appearing and disappearing are judged on the measurement itself - a check that
  * starts to find something, or stops, is news at any share.
  *
  * A check that measured something before and nothing now is the one case that is
- * not a movement at all. Counted as a resolution, the report announced work nobody
- * did: "resolved - Boards with no limit on work in progress: was 55 %" for a check
- * that simply found no board to look at this time.
+ * not a movement. Counted as a resolution, the report claimed work that never
+ * happened: "resolved - Boards with no limit on work in progress: was 55 %" for a
+ * check that found no board to look at this time.
  */
 function changeKind(before: number | null, after: number | null): CheckChange['kind'] {
   /* Only a check that had something to report counts as no longer measured. One
@@ -329,9 +329,9 @@ export function scanUnderWay(
 /**
  * How long ago something happened, in words, from seconds up to days.
  *
- * Finer than `agePhrase`, which counts days, because the age is the whole point of
+ * Finer than `agePhrase`, which counts days, because the age carries the meaning of
  * the sentence this goes into: "a moment ago" is a scan in flight, "three days ago"
- * is a mark nobody cleared, and the reader decides correctly about both.
+ * is a mark left standing, and the reader has to tell them apart.
  */
 export function agoPhrase(when: string, now: Date): string {
   const seconds = Math.floor((now.getTime() - new Date(when).getTime()) / MS_PER_SECOND);
@@ -408,9 +408,9 @@ export function sparkline(
 /**
  * Whether a second line would be visible at all.
  *
- * Half a point on a twenty-five point axis is a pixel and a quarter, and two lines
- * that close merge into one - the legend would then promise a difference nobody can
- * see. The numbers next to the chart state it instead.
+ * Half a point on a twenty-five point axis is a pixel and a quarter, so two lines
+ * that close merge into one and the legend would name a difference the chart does
+ * not show. The numbers next to the chart state it instead.
  */
 function separable(
   reported: readonly number[],

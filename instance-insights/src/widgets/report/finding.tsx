@@ -296,10 +296,10 @@ const FindingQuery: React.FunctionComponent<{
 /**
  * The reasoning behind a finding, one click away.
  *
- * Eleven cards, each with three paragraphs standing open, made a page nobody reads
- * to the end - and the sentence with the number, which is the finding, drowned in
- * them. So the card shows what is needed to judge it (severity, title, the sentence,
- * the evidence) and folds the reasoning away.
+ * Eleven cards with three open paragraphs each ran to a page length that buried the
+ * sentence carrying the number, which is the finding itself. The card shows what is
+ * needed to judge it - severity, title, the sentence, the evidence - and folds the
+ * reasoning away.
  *
  * The label carries the promise, which is what mattered about keeping
  * `legitimateWhen` visible: a reader sees that the report says when this finding is
@@ -337,10 +337,10 @@ function scoreEffect(points: HundredPoints | null, ignored: boolean): string {
 /**
  * The score arithmetic for one finding, openable.
  *
- * A score nobody can recalculate gets argued with instead of acted on, so every
- * term is available. In words rather than as a formula: "worth 10 points, 60 % of
- * what it measured is affected, so it takes away 6 of those 10". The exact ratio
- * stays in brackets for whoever wants to redo the multiplication.
+ * Every term of the arithmetic is available, so the score can be recalculated
+ * instead of taken on trust. In words rather than as a formula: "worth 10 points,
+ * 60 % of what it measured is affected, so it takes away 6 of those 10". The exact
+ * ratio stays in brackets for whoever wants to redo the multiplication.
  */
 const ScoreTerms: React.FunctionComponent<{
   finding: Finding;
@@ -448,8 +448,8 @@ const FindingHeader: React.FunctionComponent<{
 /**
  * The sentences a card needs where a control or a list would be.
  *
- * Every one of these absences reads as a bug when nothing explains it - a control
- * that failed to load, a list that failed to arrive.
+ * Without a sentence, each of these absences looks like a defect: a control that
+ * failed to load, a list that failed to arrive.
  */
 const MARKING_NOTE = {
   accountsListed:

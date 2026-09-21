@@ -97,8 +97,8 @@ export interface StoredRun {
   /**
    * True when the run was too large to keep object by object.
    *
-   * A guard rather than a truncation: a half list that presents itself as a whole
-   * one is worse than a number and a sentence saying the names were not kept.
+   * A guard rather than a truncation: a shortened list would still present itself
+   * as complete, so the objects are dropped and their absence is stated.
    */
   itemsOmitted?: boolean;
   checks: StoredCheck[];

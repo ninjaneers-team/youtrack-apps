@@ -1,11 +1,10 @@
 /**
  * Scan runner and scoring.
  *
- * Running and scoring are separate on purpose. Marking a finding as intentional
- * must move the score immediately - that is what makes the report worth reopening -
- * and asking the instance for every count again to recompute arithmetic would be
- * absurd. So `runChecks` produces outcomes, `score` turns outcomes plus a set of
- * ignored check IDs into a result, and `runScan` is the two together.
+ * Running and scoring are separate so that marking a finding as intentional moves
+ * the score without asking the instance for every count again. `runChecks` produces
+ * outcomes, `score` turns outcomes plus a set of ignored check IDs into a result,
+ * and `runScan` is the two together.
  *
  * Three hard rules shape the scoring:
  *
@@ -115,9 +114,9 @@ export async function runScan(
 }
 
 /**
- * Runs every check and reports what became of it. Sequential on purpose:
- * deterministic order for tests, and a natural throttle for the count-heavy real
- * client. One check throwing never aborts the rest.
+ * Runs every check and reports what became of it. Sequential, which gives tests a
+ * deterministic order and throttles the count-heavy real client. One check throwing
+ * never aborts the rest.
  */
 export async function runChecks(
   checks: readonly CheckDefinition[],
@@ -357,8 +356,8 @@ function clampRatio(ratio: number): number {
 /**
  * Anything a check threw, as an Error with a readable message.
  *
- * `String({})` is `[object Object]`, which reads in a report as if the app had
- * nothing to say about its own failure.
+ * `String({})` is `[object Object]`, so a rejection that is not an Error would
+ * otherwise be the whole reason the report shows.
  */
 function asError(err: unknown): Error {
   if (err instanceof Error) {

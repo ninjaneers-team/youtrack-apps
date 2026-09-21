@@ -53,8 +53,8 @@ export type StateRead = 'pending' | 'read' | 'failed';
 /**
  * The kept run as a finished scan, or null when there is none to render.
  *
- * A run whose checks the installed app no longer knows scores nothing, and a page
- * showing a score of nothing would be worse than the invitation to scan.
+ * A run whose checks the installed app no longer knows scores nothing, and a score
+ * of nothing tells the reader less than the invitation to scan.
  */
 export function restoredScan(run: StoredRun | null): ScanDone | null {
   if (run === null) {

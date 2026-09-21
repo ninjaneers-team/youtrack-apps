@@ -100,9 +100,8 @@ const PROJECT_ISSUES_QUERY = (shortName: string): string => `project: {${shortNa
  * know answers zero just as silently, but here an unknown *author* is a 404 and a
  * missing filter is a 400, so the request cannot quietly measure the wrong thing.
  *
- * Voting and tagging are in the list on purpose. Someone who mostly reads still
- * votes and organises, and that is the person a licence check must not mistake for
- * a dormant account.
+ * Voting and tagging are included because an account that mostly reads still votes
+ * and organises, and a licence check must not count it as dormant.
  */
 const ACTIVITY_CATEGORIES = [
   'IssueCreatedCategory',
@@ -164,10 +163,9 @@ const MAX_PAGES = 1000;
  * waiting. Overlapping a few of them cuts that without asking the instance for more
  * per second than it was asked for before - the rate ceiling below is unchanged.
  *
- * It starts at one, though. The instance says what it can take, and it says it by
- * answering: after a streak of quick answers the scan allows one more request in
- * flight, and the first 429 or 503 puts it back to one for good. Nobody has to
- * choose a mode, and nothing is assumed about an instance nobody has measured.
+ * It starts at one and follows the answers: after a streak of quick ones the scan
+ * allows one more request in flight, and the first 429 or 503 puts it back to one
+ * for good. No mode to choose, and nothing assumed about an unmeasured instance.
  */
 const CONCURRENCY_CAP = 3;
 const RAMP_AFTER_SUCCESSES = 8;
@@ -229,8 +227,8 @@ export interface RequestOptions {
    * Says the answer is no longer wanted, for a transport that can act on it.
    *
    * Giving up on a request and ending it are two different things: without this the
-   * scan stops waiting after thirty seconds while the request itself runs on, and in
-   * Node it holds its socket until the instance answers something nobody reads. The
+   * scan stops waiting after thirty seconds while the request runs on, holding its
+   * socket in Node until an answer arrives that no longer has a reader. The
    * Host API takes a method, a query and a body and nothing else, so inside the
    * widget this is simply unused.
    */
@@ -333,11 +331,10 @@ interface RawSystemSettings {
  * The shapes above say what a list holds, and a type says nothing at runtime. The
  * transport hands over whatever came back, and what comes back is not always the
  * instance answering: a gateway in front of it can put an object or a message
- * where a collection belongs. Both of those end badly on their own - an object
- * cannot be spread, and a string spreads into its own characters, which would
- * reach the report as an instance of three projects nobody has. So the shape is
- * asserted once, where every collection comes through, and a scan that cannot
- * read a list says so instead of reporting on something it invented.
+ * where a collection belongs. An object cannot be spread, and a string spreads into
+ * its own characters - a three-character message would reach the report as three
+ * projects. The shape is therefore asserted once, where every collection comes
+ * through, and a scan that cannot read a list says so rather than report on it.
  */
 function listOf<T>(path: string, answer: unknown): T[] {
   if (!Array.isArray(answer)) {
@@ -462,10 +459,9 @@ function detailOf(fields: Record<string, unknown>): string {
 /**
  * Any rejection, as an error that names the request and the reason.
  *
- * The Host API - the transport that runs in production - does not reject with an
- * Error. What arrives is a plain object, and `String(...)` turns that into
- * `[object Object]`: a report then offers that instead of a reason, and every
- * investigation ends there. So the shape is read here, once, for both transports.
+ * The Host API, which is the transport in production, rejects with a plain object
+ * rather than an Error; `String(...)` turns that into `[object Object]`. Both
+ * transports are read here so the report shows a reason either way.
  */
 function apiErrorFrom(path: string, rejection: unknown): ApiError {
   if (rejection instanceof ApiError) {
