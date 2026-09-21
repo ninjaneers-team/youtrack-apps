@@ -540,7 +540,10 @@ test('a field the instance did not answer for is counted, not called empty', asy
  * query no rule matches comes back as a refusal, which is how the mock says what a
  * count the instance never delivered says in a scan.
  */
-function instanceWithOneProjectUnanswered(answered: string[]): MockYouTrackClient {
+function instanceWithOneProjectUnanswered(
+  answered: string[],
+  withoutIssues: string[] = [],
+): MockYouTrackClient {
   const keys = ['WEB', 'API', 'OPS'];
   return new MockYouTrackClient({
     projects: keys.map((shortName, index) => ({
@@ -555,12 +558,20 @@ function instanceWithOneProjectUnanswered(answered: string[]): MockYouTrackClien
     users: [],
     boards: [],
     groups: [],
-    // Quiet everywhere the instance answered: the count of issues touched since the
-    // cutoff is zero, so every answered project is dormant.
-    countRules: answered.map((shortName) => ({
-      match: new RegExp(`project: \\{${shortName}\\} updated:`),
-      count: 0,
-    })),
+    countRules: [],
+    // Quiet everywhere the instance answered: the newest issue of each answered
+    // project changed long before the cutoff, so all of them are dormant.
+    updateRules: [
+      ...answered.map((shortName) => ({
+        match: new RegExp(`project: \\{${shortName}\\} sort by:`),
+        updated: NOW.getTime() - 400 * 86_400_000,
+      })),
+      // A project the search comes back empty for, though the list said it holds issues.
+      ...withoutIssues.map((shortName) => ({
+        match: new RegExp(`project: \\{${shortName}\\} sort by:`),
+        updated: null,
+      })),
+    ],
   });
 }
 
@@ -577,6 +588,27 @@ test('a project the instance did not answer for leaves the population, not the s
   assert.deepEqual((finding?.items ?? []).map((i) => i.label), ['WEB', 'API']);
   // Two of the two projects that answered, not two of three.
   assert.equal(finding?.ratio, 1);
+  assert.match(finding?.headline ?? '', /^2 of 2 projects /);
+  assert.equal(
+    finding?.evidence.find((e) => e.label === 'Projects the instance did not answer for')
+      ?.value,
+    1,
+  );
+});
+
+test('a project whose issues the search does not reach is unmeasured, not active', async () => {
+  const dormantProjects = CHECKS.find((c) => c.id === 'portfolio.dormant-projects');
+  assert.ok(dormantProjects);
+
+  /* The project holds issues - the project list said so - and the search comes back
+     with none. Read as "nothing moved" it would be dormant, read as "moved" it would
+     be active; both are inventions, so it leaves the population like a refusal. */
+  const result = await runScan(
+    [dormantProjects],
+    contextOn(instanceWithOneProjectUnanswered(['WEB', 'API'], ['OPS'])),
+  );
+  const finding = result.findings[0];
+
   assert.match(finding?.headline ?? '', /^2 of 2 projects /);
   assert.equal(
     finding?.evidence.find((e) => e.label === 'Projects the instance did not answer for')

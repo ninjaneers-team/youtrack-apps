@@ -57,8 +57,19 @@ export const QUERIES = {
    * query the same length whether the instance has two projects or two thousand.
    */
   fieldFilled: (field: string): string => `has: {${field}}`,
-  projectActivitySince: (shortName: string, since: string): string =>
-    `project: {${shortName}} updated: ${since} .. *`,
+  /**
+   * The issues of a project, newest change first.
+   *
+   * Sorted rather than counted. Asking how many issues moved since a date is an
+   * aggregate: the instance computes it in the background, answers -1 meanwhile,
+   * and a batch of them can leave most projects without a number at all. The first
+   * row of this list carries the same answer - the moment the project last moved -
+   * and reading it is an index lookup. Confirmed against an instance: with one
+   * issue requested, it returns the same timestamp as the largest `updated` over
+   * all fifty issues of the project, and the ascending order returns the oldest.
+   */
+  projectNewestFirst: (shortName: string): string =>
+    `project: {${shortName}} sort by: updated desc`,
   /**
    * Issues that carry a value for the field, in the given projects only.
    *
@@ -1333,12 +1344,12 @@ const dormantProjects: CheckDefinition = checkOf({
     const projects = countedProjects(await ctx.client.listProjects());
     if (projects.length === 0) throw new CheckSkipped('The instance has no active projects.');
 
-    const since = isoDate(ctx.now, ctx.config.dormantProjectDays);
+    const since = ctx.now.getTime() - ctx.config.dormantProjectDays * DAY_MS;
     /* A project without issues cannot have issue activity, and the total is already
        known: asking about it would be a round trip for a known answer. */
     const withIssues = projects.filter((p) => p.issuesCount > 0);
-    const activity = await ctx.client.countMany(
-      withIssues.map((p) => QUERIES.projectActivitySince(p.shortName, since)),
+    const activity = await ctx.client.newestUpdates(
+      withIssues.map((p) => QUERIES.projectNewestFirst(p.shortName)),
     );
     const dormant: Project[] = projects.filter((p) => p.issuesCount === 0);
     let unanswered = 0;
@@ -1353,7 +1364,13 @@ const dormantProjects: CheckDefinition = checkOf({
         unanswered++;
         continue;
       }
-      if (result.count === 0) dormant.push(project);
+      /* Null is a project whose issues the search does not reach, which is not the
+         same as one that has not moved: counted as dormant it would be an invention. */
+      if (result.updated === null) {
+        unanswered++;
+        continue;
+      }
+      if (result.updated < since) dormant.push(project);
     }
 
     const measured = projects.length - unanswered;

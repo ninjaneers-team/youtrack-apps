@@ -23,6 +23,7 @@ import { DEFAULT_CONFIG } from '../src/types.ts';
 import type {
   AgileBoard,
   CountResult,
+  UpdatedResult,
   CustomField,
   InstanceOperations,
   InstanceSettings,
@@ -53,6 +54,7 @@ export interface Shape {
 export class CountingClient implements YouTrackClient {
   readonly calls: Record<string, number> = {
     count: 0,
+    newestUpdate: 0,
     lastActivity: 0,
     listProjects: 0,
     listCustomFields: 0,
@@ -101,6 +103,19 @@ export class CountingClient implements YouTrackClient {
 
   async countMany(queries: readonly string[]): Promise<CountResult[]> {
     return Promise.all(queries.map(async query => ({ count: await this.count() })));
+  }
+
+  /**
+   * One request per query, like a count, and the same cost to the instance - but
+   * it is read from an index rather than computed, so it never has to be asked
+   * twice.
+   */
+  async newestUpdates(queries: readonly string[]): Promise<UpdatedResult[]> {
+    return queries.map(() => {
+      this.bump('newestUpdate');
+      // Long ago, so every project counts as dormant and the check keeps running.
+      return { updated: this.now.getTime() - 400 * DAY_MS };
+    });
   }
 
   async lastActivity(): Promise<number | null> {

@@ -22,6 +22,7 @@
 import type {
   AgileBoard,
   CountResult,
+  UpdatedResult,
   CustomField,
   InstanceOperations,
   InstanceSettings,
@@ -37,6 +38,19 @@ export interface CountRule {
   /** Non-global regex (stateful /g would break repeated .test calls). */
   match: RegExp;
   count: number;
+}
+
+/**
+ * When the newest issue of a project last changed, for the dormant check.
+ *
+ * Separate from the count rules because it answers a different question: a count
+ * says how many, this says when. An unmatched query is a refusal here as well.
+ */
+export interface UpdateRule {
+  /** Non-global regex (stateful /g would break repeated .test calls). */
+  match: RegExp;
+  /** Epoch millis, or null for a query that matches no issue at all. */
+  updated: number | null;
 }
 
 export interface MockData {
@@ -55,6 +69,7 @@ export interface MockData {
   operations?: InstanceOperations | null;
   settings?: InstanceSettings | null;
   countRules: CountRule[];
+  updateRules?: UpdateRule[];
   /**
    * Last change per user id, in epoch millis, or null for an account that never
    * changed anything. A missing entry throws, the same way an unmatched count rule
@@ -90,6 +105,17 @@ export class MockYouTrackClient implements YouTrackClient {
         }
       }),
     );
+  }
+
+  async newestUpdates(queries: readonly string[]): Promise<UpdatedResult[]> {
+    return queries.map(query => {
+      for (const rule of this.data.updateRules ?? []) {
+        if (rule.match.test(query)) return { updated: rule.updated };
+      }
+      return {
+        failed: `MockYouTrackClient: no update rule matches query ${JSON.stringify(query)}`,
+      };
+    });
   }
 
   async lastActivity(userId: string): Promise<number | null> {
@@ -324,6 +350,21 @@ export function syntheticData(now: Date): MockData {
     // --- Issue counts ------------------------------------------------------
     // Order matters: the most specific token wins. See the file header on why
     // these match tokens rather than exact query strings.
+    /* The dormant check asks each project when it last moved, so the fixture
+       answers with a moment rather than a number. Only LEGACY is behind the
+       180-day cutoff. */
+    updateRules: [
+      {
+        match: /project:\s*\{?LEGACY\b/i,
+        updated: now.getTime() - 400 * DAY_MS,
+        // serves: portfolio.dormant-projects (LEGACY has not moved)
+      },
+      {
+        match: /project:\s*\{?(WEB|APP|NOLEAD|GHOST)\b/i,
+        updated: now.getTime() - DAY_MS,
+        // serves: portfolio.dormant-projects (the others moved yesterday)
+      },
+    ],
     countRules: [
       /* How much work each of the three boards carries. A board that carries none
          is out of the board checks entirely, so every one of them answers. */
@@ -396,17 +437,6 @@ export function syntheticData(now: Date): MockData {
         match: /(?=.*Unresolved)(?=.*updated:)/i,
         count: 40,
         // serves: process.stale-unresolved (stale issues)
-      },
-      {
-        // dormant check probes activity per non-archived project; only LEGACY is 0.
-        match: /(project|in):\s*\{?LEGACY\b/i,
-        count: 0,
-        // serves: portfolio.dormant-projects (LEGACY has no activity)
-      },
-      {
-        match: /(project|in):\s*\{?(WEB|APP|NOLEAD|GHOST)\b/i,
-        count: 25,
-        // serves: portfolio.dormant-projects (other projects are active)
       },
       {
         // total unresolved (denominator for the ratio-based process checks).
@@ -541,6 +571,10 @@ export function recordingClient(inner: YouTrackClient): {
       count: async query => {
         queries.push(query);
         return inner.count(query);
+      },
+      newestUpdates: batch => {
+        queries.push(...batch);
+        return inner.newestUpdates(batch);
       },
       countMany: async batch => {
         queries.push(...batch);

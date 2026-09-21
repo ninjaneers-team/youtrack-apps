@@ -130,12 +130,19 @@ async function main(): Promise<void> {
   );
   results.push(
     sampleProject
-      ? await probe('query project activity (dormant)', async () =>
-          `=> ${await client.count(
-            QUERIES.projectActivitySince(sampleProject.shortName, ISO_OLD),
-          )}`,
-        )
-      : { name: 'query project activity (dormant)', ok: false, detail: 'no sample project' },
+      ? /* The one query that is sorted rather than counted. A 4xx would mean the
+           search language does not take this order, and the dormant check would be
+           reading the first row of a list nobody sorted. */
+        await probe('query project newest first (dormant)', async () => {
+          const [result] = await client.newestUpdates([
+            QUERIES.projectNewestFirst(sampleProject.shortName),
+          ]);
+          if (result === undefined || 'failed' in result) {
+            throw new Error(result === undefined ? 'no answer' : result.failed);
+          }
+          return `=> ${result.updated === null ? 'no issues' : new Date(result.updated).toISOString()}`;
+        })
+      : { name: 'query project newest first (dormant)', ok: false, detail: 'no sample project' },
   );
   results.push(
     sampleUser

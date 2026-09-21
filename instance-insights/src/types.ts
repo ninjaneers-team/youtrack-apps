@@ -532,6 +532,19 @@ export interface InstanceSettings {
 export type CountResult = { readonly count: number } | { readonly failed: string };
 
 /**
+ * When something matching a query last changed: the moment, nothing matching, or
+ * why the instance refused.
+ *
+ * Separate from a count on purpose. A count is an aggregate the instance computes
+ * in the background and answers with -1 while it works; reading the newest of a
+ * sorted list is an index lookup that answers at once. Where a check only needs to
+ * know whether anything moved, the lookup says the same thing without the wait.
+ */
+export type UpdatedResult =
+  | { readonly updated: number | null }
+  | { readonly failed: string };
+
+/**
  * The counts of a batch, or the first refusal as an error.
  *
  * Most checks cannot do anything sensible with a partial answer: a share of the
@@ -567,6 +580,13 @@ export interface YouTrackClient {
    * flight - the checks stay free of that decision, and of HTTP.
    */
   countMany(queries: readonly string[]): Promise<CountResult[]>;
+  /**
+   * When the newest issue matching each query was last changed, in epoch millis.
+   *
+   * The queries carry the order themselves, so the newest issue is the first one
+   * and one issue per query is enough. Null where a query matches nothing.
+   */
+  newestUpdates(queries: readonly string[]): Promise<UpdatedResult[]>;
   /**
    * When the user last changed anything, in epoch millis, or null if never.
    *
