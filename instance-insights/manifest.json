@@ -19,7 +19,7 @@
       "name": "Instance Insights",
       "description": "Runs a read-only scan of this instance and reports where its configuration and process have drifted, with what resolving each finding involves.",
       "indexPath": "report/index.html",
-      "extensionPoint": "MAIN_MENU_ITEM",
+      "extensionPoint": "ADMINISTRATION_MENU_ITEM",
       "iconPath": "report/widget-icon.svg",
       "permissions": [
         "ADMIN_UPDATE_APP"

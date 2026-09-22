@@ -304,10 +304,13 @@ test('a widget links into the instance only when two facts agree', () => {
 });
 
 test('the report page is where the instance serves it', () => {
-  // Measured in the address bar of a running instance, not derived from a rule.
+  /* Measured in the address bar of a running instance after following the item in
+     the administration menu, not derived from a rule. A page under that menu is
+     served below /admin; the address without it answers too, but the menu uses
+     this one, and the tile has to send its reader where the menu does. */
   assert.equal(
     reportPageUrl('https://youtrack.example.com'),
-    'https://youtrack.example.com/app/instance-insights/report',
+    'https://youtrack.example.com/admin/app/instance-insights/report',
   );
   assert.equal(reportPageUrl(null), null, 'no instance, no link');
 });

@@ -86,17 +86,21 @@ const MINUTE_END = 16;
 /**
  * The name YouTrack knows this app under, and the widget that holds the report.
  *
- * A page of the app is served at `<instance>/app/<app>/<widget>` - measured in the
- * address bar of a running instance (2026.2), not derived from a rule. Both names
- * come from the manifest, and `test/repo-layout.test.ts` holds them against it, so
- * a renamed widget cannot leave a link pointing at nothing.
+ * A page that hangs off the administration menu is served at
+ * `<instance>/admin/app/<app>/<widget>` - read out of the address bar of a running
+ * instance (2026.2) after following the menu item, not derived from a rule. The
+ * path without `/admin` still answers, but this is the one the menu itself uses,
+ * and a link that disagrees with the menu sends two readers to two addresses.
+ *
+ * Both names come from the manifest, and `test/repo-layout.test.ts` holds them
+ * against it, so a renamed widget cannot leave a link pointing at nothing.
  */
 export const APP_NAME = 'instance-insights';
 export const REPORT_WIDGET = 'report';
 
 /** The report page of this app in this instance, or null without an instance. */
 export function reportPageUrl(origin: string | null): string | null {
-  return origin === null ? null : `${origin}/app/${APP_NAME}/${REPORT_WIDGET}`;
+  return origin === null ? null : `${origin}/admin/app/${APP_NAME}/${REPORT_WIDGET}`;
 }
 
 /**

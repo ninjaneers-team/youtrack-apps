@@ -53,8 +53,8 @@ npm run upload -- --host https://youtrack.example.com --token perm-...
 ```
 
 The token is a permanent token from an administrator's profile, used as it is.
-*Instance Insights* then appears in the main menu, and the score tile can be added
-to any dashboard.
+*Instance Insights* then appears in the administration menu, under Integrations,
+and the score tile can be added to any dashboard.
 
 It needs YouTrack 2024.3 or newer, which is where an app may keep its own data on
 the instance. On versions before 2026.2 it needs the classic interface: with

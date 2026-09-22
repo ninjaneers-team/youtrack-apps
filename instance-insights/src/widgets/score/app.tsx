@@ -75,7 +75,7 @@ const ToReport: React.FunctionComponent<{href: string | null; label: string}> = 
 }) =>
   href === null ? (
     <p className="score-tile__at">
-      {'Open Instance Insights from the main menu for the findings behind this.'}
+      {'Open Instance Insights from the administration menu for the findings behind this.'}
     </p>
   ) : (
     <Button primary href={href} target="_blank" rel="noreferrer">
