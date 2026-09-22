@@ -40,6 +40,10 @@ Administration, Reporting, Dashboard
 
 ## Screenshots
 
+The first five on the light theme, which is the one the Marketplace page is drawn
+in. The last one is the same report on a dark instance, and it is in the set to say
+the one thing the others cannot: the app takes its colours from the theme around it.
+
 1. `screenshots/01-report-top.png` - the score, its bar, the trend, and where the
    points went
 2. `screenshots/02-finding-reasoning.png` - one finding with its reasoning and the
@@ -47,4 +51,4 @@ Administration, Reporting, Dashboard
 3. `screenshots/03-mark-objects.png` - an object table with a decision already in it
 4. `screenshots/04-dashboard-tile.png` - the score tile on a dashboard
 5. `screenshots/05-export-menu.png` - both exports, with what each one is for
-6. `screenshots/06-report-light.png` - the same page on the light theme
+6. `screenshots/06-report-dark.png` - the same report on a dark instance
