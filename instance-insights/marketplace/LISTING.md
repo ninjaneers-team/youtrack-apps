@@ -31,8 +31,7 @@ administrator's own permissions - no service account, no stored token, no backgr
 job. What it keeps between visits stays in the instance's own database, and no
 account is named in it.
 
-Needs YouTrack 2024.3 or newer. On versions before 2026.2 the dashboard tile needs
-the classic interface. MIT licensed.
+Needs YouTrack 2024.3 or newer. MIT licensed.
 
 ## Tags
 
