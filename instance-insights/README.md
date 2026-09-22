@@ -57,8 +57,8 @@ The token is a permanent token from an administrator's profile, used as it is.
 and the score tile can be added to any dashboard.
 
 It needs YouTrack 2024.3 or newer, which is where an app may keep its own data on
-the instance. On versions before 2026.2 it needs the classic interface: with
-YouTrack Lite switched on, the dashboard tile does not appear.
+the instance. Both interfaces work: on 2024.3 with YouTrack Lite switched on, the
+menu item and the dashboard tile are both there.
 
 ## The score
 
