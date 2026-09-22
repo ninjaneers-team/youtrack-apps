@@ -3,7 +3,7 @@
   "title": "Instance Insights",
   "description": "Finds what has grown in a YouTrack instance over time: unused licences, projects without an owner, inconsistent custom fields, states that never count as resolved. Produces a report with a score, the findings behind it and what resolving each one involves. Read-only - it changes nothing in the instance. Both views are open only to accounts holding Low-level Admin Write - YouTrack's permission for administering the instance itself - and every request runs with the permissions of whoever opened them. A scan reads through the REST API and asks roughly one question per account and per board, and two per project and per custom field: a few hundred requests on a small instance, a few thousand on a large one, at no more than twenty a second and stoppable at any point. The report states how many requests it sent and how long it took. Needs YouTrack 2024.3 or newer. On versions before 2026.2 it needs the classic interface: with YouTrack Lite switched on, the dashboard tile does not appear.",
   "$schema": "https://json.schemastore.org/youtrack-app.json",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "vendor": {
     "name": "Ninjaneers GmbH",
     "url": "https://ninjaneers.de",
