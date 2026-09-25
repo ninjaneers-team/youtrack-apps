@@ -1,0 +1,29 @@
+{
+  "name": "pomodoro-timer",
+  "title": "Pomodoro Timer",
+  "description": "A Pomodoro Timer Widget",
+  "$schema": "https://json.schemastore.org/youtrack-app.json",
+  "vendor": {
+    "name": "ninjaneers.de",
+    "url": "https://ninjaneers.de"
+  },
+  "icon": "icon.svg",
+  "httpHandlers": [
+    "backend-storage.js"
+  ],
+  "entityExtensions": "entity-extensions.json",
+  "widgets": [
+    {
+      "key": "pomodoro-timer",
+      "name": "Pomodoro Timer",
+      "indexPath": "pomodoro-timer/index.html",
+      "extensionPoint": "ISSUE_FIELD_PANEL_FIRST",
+      "iconPath": "pomodoro-timer/widget-icon.svg",
+      "description": "A Pomodoro Timer",
+      "expectedDimensions": {
+        "height": 500,
+        "width": 300
+      }
+    }
+  ]
+}
