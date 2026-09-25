@@ -1,0 +1,13 @@
+{
+  "entityTypeExtensions": [
+    {
+      "entityType": "Issue",
+      "properties": {
+        "pomodoroUserData": {
+          "type": "string",
+          "description": "Stores per-user Pomodoro timer data as JSON object with user IDs as keys"
+        }
+      }
+    }
+  ]
+}

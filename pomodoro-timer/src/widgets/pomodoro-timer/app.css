@@ -1,0 +1,316 @@
+.pomodoro-container {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--ring-unit));
+  padding: calc(var(--ring-unit) / 2);
+  width: 100%;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 100%;
+  height: auto;
+}
+
+.timer-display {
+  text-align: center;
+  padding: calc(var(--ring-unit));
+  border-radius: var(--ring-border-radius);
+  border: 1px solid var(--ring-borders-color);
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+  background-color: var(--ring-content-background-color);
+}
+
+.timer-display.focus-mode {
+  background-color: var(--ring-hover-background-color);
+  border-color: var(--ring-main-color);
+}
+
+.timer-display.break-mode {
+  background-color: var(--ring-warning-container-light-color);
+  border-color: var(--ring-warning-color);
+}
+
+.timer-display.completed {
+  animation: pulse 2s ease-in-out;
+}
+
+.timer-display.completed.focus-mode {
+  background-color: var(--ring-success-container-light-color);
+  border-color: var(--ring-success-color);
+}
+
+.timer-display.completed.break-mode {
+  background-color: var(--ring-highlight-container-light-color);
+  border-color: var(--ring-highlight-fill-color);
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+.time-and-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--ring-unit) / 2);
+}
+
+.mode-with-switch {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--ring-unit) / 2);
+}
+
+.mode-switch-icon {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--ring-main-color);
+  transition: all 0.2s ease;
+  padding: 1px 3px;
+  border-radius: var(--ring-border-radius);
+  user-select: none;
+  background: none;
+  border: none;
+  outline: none;
+}
+
+.mode-switch-icon:hover:not(.disabled) {
+  background-color: var(--ring-hover-background-color);
+  color: var(--ring-main-hover-color);
+}
+
+.mode-switch-icon:focus:not(.disabled) {
+  outline: 2px solid var(--ring-main-color);
+  outline-offset: 2px;
+}
+
+.mode-switch-icon:active {
+  outline: none;
+}
+
+.mode-switch-icon:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.mode-switch-icon.disabled {
+  cursor: not-allowed;
+  color: var(--ring-disabled-color);
+  opacity: 0.5;
+}
+
+.timer-time {
+  font-family: monospace;
+  font-size: 4.5em;
+  font-weight: bold;
+  color: var(--ring-text-color);
+  line-height: 1;
+}
+
+.mode-indicator {
+  margin-top: calc(var(--ring-unit) / 4);
+}
+
+.mode-text {
+  margin-top: calc(var(--ring-unit) / 4);
+}
+
+/* Timer Controls */
+.timer-controls {
+  display: flex;
+  gap: calc(var(--ring-unit) / 3);
+  justify-content: center;
+  align-items: center;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.timer-controls button {
+  min-width: calc(var(--ring-unit) * 5);
+  flex: 0 0 auto;
+  font-size: 0.85em;
+  padding: calc(var(--ring-unit) / 2) calc(var(--ring-unit) / 1.5);
+}
+
+/* Stats Display */
+.stats-display {
+  display: flex;
+  justify-content: center;
+  padding: calc(var(--ring-unit));
+  background-color: var(--ring-sidebar-background-color);
+  border-radius: var(--ring-border-radius);
+  border: 1px solid var(--ring-borders-color);
+  flex-shrink: 0;
+}
+
+.stat-item-single {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.stat-item-single > :first-child {
+  font-size: 0.8em;
+  margin-bottom: calc(var(--ring-unit) / 4);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  flex: 1;
+}
+
+.stat-item:first-child {
+  border-right: 1px solid var(--ring-line-color);
+  padding-right: calc(var(--ring-unit));
+}
+
+.stat-item:last-child {
+  padding-left: calc(var(--ring-unit));
+}
+
+/* Todo Section */
+.todo-section {
+  padding-top: calc(var(--ring-unit));
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.todo-section > :first-child {
+  margin-bottom: calc(var(--ring-unit) / 2);
+}
+
+.todo-list {
+  margin: calc(var(--ring-unit) / 2) 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--ring-unit) / 2);
+  padding: calc(var(--ring-unit) / 3) 0;
+  border-bottom: 1px solid var(--ring-line-color);
+  transition: background-color 0.2s ease;
+}
+
+.todo-item:last-child {
+  border-bottom: none;
+}
+
+.todo-item:hover {
+  background-color: var(--ring-hover-background-color);
+  border-radius: var(--ring-border-radius);
+}
+
+.todo-item .delete-button {
+  color: var(--ring-error-color) !important;
+  font-weight: bold;
+  font-size: 14px;
+  min-width: 18px;
+  padding: 1px 4px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.todo-item .delete-button:hover {
+  color: var(--ring-main-error-hover-color) !important;
+  background-color: var(--ring-error-container-light-color) !important;
+  border-radius: var(--ring-border-radius);
+}
+
+.todo-content {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  padding: calc(var(--ring-unit) / 3);
+  cursor: pointer;
+  border-radius: var(--ring-border-radius);
+  transition: background-color 0.2s ease;
+  min-width: 0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.todo-content:hover {
+  background-color: var(--ring-hover-background-color);
+}
+
+.add-todo-form {
+  display: flex;
+  gap: calc(var(--ring-unit) / 3);
+  margin-top: calc(var(--ring-unit) / 2);
+  align-items: stretch;
+}
+
+.add-todo-form input {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9em;
+}
+
+.add-todo-form button {
+  flex-shrink: 0;
+  font-size: 0.85em;
+  padding: calc(var(--ring-unit) / 2) calc(var(--ring-unit));
+}
+
+@media (max-width: 300px) {
+  .pomodoro-container {
+    gap: calc(var(--ring-unit) / 2);
+    padding: calc(var(--ring-unit) / 4);
+  }
+
+  .timer-controls {
+    flex-wrap: wrap;
+    gap: calc(var(--ring-unit) / 4);
+  }
+
+  .timer-controls button {
+    min-width: calc(var(--ring-unit) * 4);
+    font-size: 0.8em;
+  }
+
+  .timer-time {
+    font-size: 2.2em;
+  }
+
+  .stats-display {
+    text-align: center;
+    padding: calc(var(--ring-unit) / 2);
+  }
+
+  .add-todo-form {
+    flex-direction: column;
+    gap: calc(var(--ring-unit) / 4);
+  }
+}
+
+@media (max-height: 400px) {
+  .pomodoro-container {
+    gap: calc(var(--ring-unit) / 2);
+  }
+
+  .timer-display {
+    padding: calc(var(--ring-unit) / 2);
+  }
+
+  .timer-time {
+    font-size: 2.1em;
+  }
+}
+
+.todo-content:focus {
+  outline: 2px solid var(--ring-main-color);
+  outline-offset: 2px;
+}
+
+.timer-display.completed .timer-time {
+  color: var(--ring-success-color);
+}
